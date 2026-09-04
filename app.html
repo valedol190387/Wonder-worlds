@@ -152,14 +152,6 @@
   .tile.slim svg{width:22px;height:22px}
   .tile.lit{background:var(--accent);color:#2a1a00}
   #phoneWorld{font-size:13px;opacity:.55;margin:0}
-  /* Общие действия: жмёшь — делают все. Плитки мельче основных, чтобы
-     не спорить с «Сфоткать», но достаточно крупные для детского пальца. */
-  #phoneActsTitle{margin:10px 0 0;font-size:13px;opacity:.55}
-  #phoneActs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;max-width:430px}
-  #phoneActs .act{border:0;border-radius:16px;background:rgba(255,255,255,.1);color:#fff;
-    padding:13px 6px;font-size:14px;font-weight:700;cursor:pointer;transition:transform .12s,background .2s}
-  #phoneActs .act:active{transform:scale(.94)}
-  #phoneActs .act.lit{background:var(--accent);color:#2a1a00}
   #phoneMid{overflow:auto;-webkit-overflow-scrolling:touch}
 
   /* ---------- рисование пальцем ---------- */
@@ -433,15 +425,6 @@
       <button class="tile" id="worldBtnPhone">Сменить мир</button>
       <button class="tile" id="sndBtnPhone">Звук</button>
       <button class="tile slim wide" id="clearBtnPhone">Убрать всех с экрана</button>
-    </div>
-    <p id="phoneActsTitle">Все монстрики сейчас:</p>
-    <div id="phoneActs">
-      <button class="act" data-kind="dance">Танцуют</button>
-      <button class="act" data-kind="jump">Прыгают</button>
-      <button class="act" data-kind="run">Бегут</button>
-      <button class="act" data-kind="sleep">Спят</button>
-      <button class="act" data-kind="scatter">Разбегаются</button>
-      <button class="act" data-kind="parade">Парад</button>
     </div>
   </div>
   <div id="phoneSent">Отправлено! Смотри на экран</div>
@@ -2090,6 +2073,7 @@ class Monster{
     this.bob = Math.random()*6.283;
     this.driftU = (Math.random()<0.5?-1:1) * (0.05 + Math.random()*0.11);
     this.driftY = (Math.random()*2-1) * 0.012;
+    this.kind = 'hop';                          // характер назначает addMonster по коду
     this.say = null; this.sayT = 0;            // реплика над головой
     this.crouch = 0;                            // замах: присел перед прыжком
     this.sync();
@@ -2102,6 +2086,8 @@ class Monster{
   }
 
   sync(){
+    if (this.kind === 'run' && !this.tempoSet){ this.speed *= 1.9; this.driftU *= 1.9; this.tempoSet = true; }
+    if (this.kind === 'sleep' && !this.tempoSet){ this.speed *= 0.35; this.driftU *= 0.35; this.tempoSet = true; }
     this.flying = W().motion === 'fly';
     this.k = depthK(this.t) * this.sizeVar;
     this.h = VH * (this.flying ? 0.22 : 0.30) * this.k;
@@ -2151,7 +2137,7 @@ class Monster{
       if (this.crouch <= 0){ this.crouch = 0; this.launch(this.crouchPower || 1); }
     }
     const mode = W().motion;
-    if (mood.kind && mode === 'hop') this.act(dt, now);
+    if (mode === 'hop' && this.kind !== 'hop') this.behave(dt, now);
     else if (mode === 'drive') this.drive(dt);
     else if (mode === 'fly') this.fly(dt, now);
     else this.hop(dt);
@@ -2211,58 +2197,95 @@ class Monster{
     }
   }
 
-  /* Общее действие для всех: пришло с пульта, длится секунд десять.
-     Физика прыжка та же, что в hop(), меняется только «чего хочет» монстрик. */
-  act(dt, now){
-    const k = mood.kind, age = (now - mood.t0)/1000;
-    // гравитация и полёт — общие для всех действий
+  /* Поведение по характеру. Физика прыжка та же, что в hop(), меняется
+     только «чего хочет» монстрик. Иногда любой характер делает паузу и
+     ведёт себя как все — чтобы не превращаться в заводную игрушку. */
+  behave(dt, now){
+    const k = this.kind;
     this.vz -= 11*dt; this.z += this.vz*dt;
     if (this.z > 0){ this.u += this.du*dt; this.t += this.dt*dt; this.clamp(); return; }
     if (this.vz < -1.2){
       const p = Math.min(1, -this.vz/3.2);
       this.sy = 1 - 0.34*p; this.sx = 1 + 0.34*p;
       this.sync(); spawnDust(this.x, this.baseY, 4 + p*6, this.k);
-      if (k !== 'parade') SFX.land(p*0.6);
+      SFX.land(p * (k === 'jumper' ? 1 : 0.6));
     }
     this.z = 0; this.vz = 0; this.du = 0; this.dt = 0;
     this.cooldown -= dt;
+    this.pause = Math.max(0, (this.pause || 0) - dt);
+    if (this.pause > 0){ this.hopIdle(dt); return; }          // передышка — как обычный
+    if (this.cooldown <= 0 && Math.random() < 0.04){ this.pause = 2 + Math.random()*3; return; }
 
     if (k === 'dance'){
-      // общий бит на всех: каждые 0.32 с — качок вбок и смена «ноги»
       const beat = Math.floor(now/320), side = beat % 2 ? 1 : -1;
       if (beat !== this.lastBeat){
         this.lastBeat = beat;
         this.sx = 1.22; this.sy = 0.82;
         this.dir = side * (this.phase > 3 ? -1 : 1);
         if (beat % 4 === (this.phase > 3 ? 0 : 2)) this.launch(0.55);
-        if (Math.random() < 0.06) this.speak(['Ла-ла!','Уи!','♪'][Math.random()*3|0], 1.2);
+        if (Math.random() < 0.04) this.speak(['Ла-ла!','Уи!','♪'][Math.random()*3|0], 1.2);
       }
-    } else if (k === 'jump'){
-      if (this.cooldown <= 0){ this.launch(1.35); this.cooldown = 0.55 + Math.random()*0.5; }
+    } else if (k === 'jumper'){
+      if (this.cooldown <= 0){
+        this.launch(1.45);
+        if (Math.random() < 0.15) this.speak(['Выше!','Оп-па!','Ух!'][Math.random()*3|0], 1.1);
+        this.cooldown = 0.9 + Math.random()*1.4;
+      }
     } else if (k === 'run'){
       if (this.cooldown <= 0){
-        this.launch(0.5, this.dir * (0.55 + Math.random()*0.2));   // низкие частые прыжки вперёд
+        if (Math.random() < 0.12) this.dir = -this.dir;
+        this.launch(0.5, this.dir * (0.5 + Math.random()*0.2));
         this.cooldown = 0.28 + Math.random()*0.12;
       }
     } else if (k === 'sleep'){
       this.rest = 1;
       this.sy += (0.93 - this.sy)*Math.min(1, dt*3);
-      if (this.cooldown <= 0){ this.speak('z-z-z', 2.2); this.cooldown = 2.5 + Math.random()*2; }
-    } else if (k === 'scatter'){
-      if (age < 0.5 && !this.scattered){
-        this.scattered = true;
-        this.dir = this.u < 0 ? -1 : 1;
-        this.launch(1.2, this.dir * 0.5);
-        this.speak(['Ой!','А-а-а!','Спрячусь!'][Math.random()*3|0], 1.4);
-      } else if (this.cooldown <= 0){
-        this.launch(0.7, this.dir * 0.3); this.cooldown = 0.6 + Math.random()*0.6;
+      if (this.cooldown <= 0){
+        this.speak('z-z-z', 2.2);
+        this.cooldown = 3 + Math.random()*3;
+        if (Math.random() < 0.15){ this.pause = 4; this.sy = 1.15; this.speak('Ой, уснул', 1.4); }   // проснулся, потянулся
       }
-    } else if (k === 'parade'){
-      if (this.cooldown <= 0){ this.launch(0.45, 0.32); this.cooldown = 0.42; }
+    } else if (k === 'shake'){
+      // мелкая дрожь, изредка подпрыгивает от собственного испуга
+      this.jit = (this.jit || 0) + dt*60;
+      this.sx = 1 + 0.06*Math.sin(this.jit*2.3); this.sy = 1 - 0.05*Math.sin(this.jit*2.3);
+      if (this.cooldown <= 0){
+        this.launch(0.5 + Math.random()*0.4);
+        if (Math.random() < 0.2) this.speak(['Б-р-р','Ой-ой','Страшно!'][Math.random()*3|0], 1.2);
+        this.cooldown = 1.5 + Math.random()*2.5;
+      }
+    } else if (k === 'puff'){
+      // надувается медленно, лопается-сдувается быстро
+      this.puffT = (this.puffT || 0) + dt;
+      const cyc = 3.2, ph = (this.puffT % cyc) / cyc;
+      this.puff = ph < 0.8 ? 1 + 0.45*(ph/0.8) : 1.45 - 0.45*((ph-0.8)/0.2);
+      if (ph < 0.8 && this.lastPh >= 0.8){ spawnDust(this.x, this.baseY - this.h*0.6, 10, this.k*0.7); this.sx = 1.25; this.sy = 0.8; }
+      this.lastPh = ph;
+      if (this.cooldown <= 0){ this.launch(0.5); this.cooldown = 3 + Math.random()*3; }
+    } else if (k === 'spin'){
+      // волчок: несколько быстрых оборотов, потом прыжок от головокружения
+      this.spinT = (this.spinT || 0) + dt;
+      if (this.spinT < 1.4){ this.dir = Math.sin(this.spinT*18) > 0 ? 1 : -1; this.face = Math.sin(this.spinT*18); }
+      else if (this.cooldown <= 0){
+        this.launch(0.9); this.spinT = 0;
+        if (Math.random() < 0.3) this.speak(['Ух, кружится!','Уиии!'][Math.random()*2|0], 1.3);
+        this.cooldown = 2 + Math.random()*3;
+      }
+    } else if (k === 'walk'){
+      if (this.cooldown <= 0){ this.launch(0.45, 0.30); this.cooldown = 0.42; }
       this.dir = 1;
-      // дошёл до правого края — появляется слева: колонна идёт по кругу
-      if (this.u >= maxU(this.t) - 0.001) this.u = -maxU(this.t);
-    }
+      if (Math.random() < dt*0.05) this.speak(['Иду-иду','Куда это я?','Ля-ля'][Math.random()*3|0], 1.4);
+    } else this.hop(dt);
+  }
+
+  /* Обычное стояние: дрейф по глубине и редкие прыжки — общий кусок hop()
+     для тех, кто взял передышку от своего характера. */
+  hopIdle(dt){
+    this.t += this.driftT*dt;
+    if (this.t < T_MIN + 0.05){ this.t = T_MIN + 0.05; this.driftT = Math.abs(this.driftT); }
+    if (this.t > 0.98){ this.t = 0.98; this.driftT = -Math.abs(this.driftT); }
+    this.cooldown -= dt;
+    if (this.cooldown <= 0){ this.jump(); this.cooldown = 1.2 + Math.random()*2; }
   }
 
   /* машинки не скачут — они катятся, покачиваясь на подвеске */
@@ -2323,7 +2346,7 @@ class Monster{
 
   clamp(){
     const lim = maxU(this.t);
-    if (mood.kind === 'parade' && this.u > lim){ this.u = -lim; return; }
+    if (this.kind === 'walk' && this.u > lim){ this.u = -lim; return; }   // бродяга идёт по кругу
     if (this.u < -lim){ this.u = -lim; this.du = Math.abs(this.du); this.driftU = Math.abs(this.driftU); }
     if (this.u >  lim){ this.u =  lim; this.du = -Math.abs(this.du); this.driftU = -Math.abs(this.driftU); }
     if (this.t < T_MIN){ this.t = T_MIN; this.dt = Math.abs(this.dt); }
@@ -2333,11 +2356,13 @@ class Monster{
   draw(now){
     const s = this.spr, sw = s.width, sh = s.height, w = W();
     const SL = 11;
-    const ww = this.w*this.sx, hh = this.h*this.sy*(this.breath||1);
+    const puff = this.kind === 'puff' ? (this.puff || 1) : 1;
+    const ww = this.w*this.sx*puff, hh = this.h*this.sy*(this.breath||1)*puff;
     const flying = this.flying;
     const wob = (flying ? 6 : (this.z > 0.02 ? 5 : 2.2)) * this.k;
 
-    const px = this.x + camShift(this.t);
+    const shakeX = this.kind === 'shake' && this.z <= 0.02 ? Math.sin(now*0.09 + this.phase)*2.2*this.k : 0;
+    const px = this.x + camShift(this.t) + shakeX;
     ctx.save();
     // Полная плотность: «дымка» прозрачностью делала персонажей стеклянными.
     // Глубину и так продают масштаб, реквизит и параллакс.
@@ -2482,37 +2507,29 @@ function spawnDust(x, y, n, k){
 }
 function spawnPortal(x, y){ portals.push({x, y, t:0}); SFX.portal(); }
 
-/* ---------- общее действие ----------
-   Один ребёнок жмёт на пульте «танцуют» — и танцуют все. Своих монстров
-   в мире нет: телефонов много, а мир один, поэтому и действие общее. */
-const MOODS = {dance:'Танцуют!', jump:'Прыгают!', run:'Бегут!', sleep:'Спят…', scatter:'Разбегаются!', parade:'Парад!'};
-let mood = {kind:null, until:0, t0:0};
-function startMood(kind, dur = 11000){
-  if (!MOODS[kind]) return;
-  const now = performance.now();
-  mood = {kind, until: now + dur, t0: now};
-  for (const m of monsters){
-    m.scattered = false; m.lastBeat = -1; m.rest = 0;
-    m.cooldown = kind === 'jump' ? Math.random()*0.8 : Math.random()*0.4;   // волной, не строем
-    if (W().motion !== 'hop'){                 // машинкам и птичкам — хотя бы темп
-      if (kind === 'run')  m.speed *= 2.2, m.driftU *= 2.2;
-      if (kind === 'sleep') m.speed *= 0.15, m.driftU *= 0.15;
-      if (kind === 'parade'){ m.dir = 1; m.driftU = Math.abs(m.driftU); }
-    }
-  }
-  toast(MOODS[kind], 1800);
-  SFX.greet();
-}
-function endMood(){
-  const was = mood.kind;
-  mood = {kind:null, until:0, t0:0};
-  for (const m of monsters){
-    m.rest = 0; m.cooldown = 0.4 + Math.random()*1.5;
-    if (W().motion !== 'hop'){
-      if (was === 'run')  m.speed /= 2.2, m.driftU /= 2.2;
-      if (was === 'sleep') m.speed /= 0.15, m.driftU /= 0.15;
-    }
-  }
+/* ---------- характеры ----------
+   У каждого монстрика свой нрав, и он его показывает всегда: один вечно
+   пляшет, другой носится, третий спит, четвёртый раздувается как шарик.
+   Характер выбирается из кода монстрика, поэтому на любом экране и после
+   любой перезагрузки он у него один и тот же — как у настоящего. */
+const KINDS = [
+  ['hop',   22],   // обычный попрыгун
+  ['dance', 12],   // пляшет на месте
+  ['run',   10],   // носится туда-сюда
+  ['sleep',  8],   // соня
+  ['shake', 10],   // трясётся
+  ['puff',  10],   // раздувается и сдувается
+  ['spin',  10],   // крутится волчком
+  ['jumper',10],   // прыгает выше всех
+  ['walk',   8],   // бродяга: идёт через весь экран и появляется с другой стороны
+];
+const KIND_TOTAL = KINDS.reduce((a, k) => a + k[1], 0);
+function kindFromId(id){
+  let h = 7;
+  for (const ch of String(id || Math.random())) h = (h*31 + ch.charCodeAt(0)) >>> 0;
+  let r = h % KIND_TOTAL;
+  for (const [k, w] of KINDS){ if (r < w) return k; r -= w; }
+  return 'hop';
 }
 
 /* ---------- смена мира ---------- */
@@ -2528,7 +2545,7 @@ function setWorld(id, bg){
 /* ---------- главный цикл ---------- */
 let last = performance.now();
 function frame(now){
-  const dt = Math.min(0.05, (now-last)/1000); last = now;
+  const dt = Math.max(0, Math.min(0.05, (now-last)/1000)); last = now;   // часы назад не ходят
   cam = (Math.sin(now*0.000041) + 0.6*Math.sin(now*0.000017 + 2.1)) * VW*0.009;
 
   drawSky(now);
@@ -2556,7 +2573,6 @@ function frame(now){
   for (const m of monsters) m.update(dt, now);
   separate(dt);
   socialize(dt);
-  if (mood.kind && now > mood.until) endMood();
   updateAmbient(dt, now);
 
   const useBg = !!(customBg || bgFor(WORLD_ID));
@@ -2854,6 +2870,7 @@ $('goBtn').onclick = ()=>{
 function addMonster(spr, name, id){
   const m = new Monster(spr, name);
   m.id = id || null;
+  m.kind = kindFromId(id);
   spawnPortal(m.x, m.baseY - m.h*0.5);
   // соседи оборачиваются на новичка и радостно подпрыгивают
   if (W().motion !== 'drive')
@@ -3735,7 +3752,6 @@ function connectSse(){
       toast(on ? 'Звук включён' : 'Звук выключен');
     }
     if (action === 'wake') wake();
-    if (action === 'act') startMood(JSON.parse(ev.data).kind);
   });
   sse.addEventListener('world', ev => applyWorldInfo(JSON.parse(ev.data), true));
   sse.addEventListener('gone', ()=> showGone('Этот мир удалили'));
@@ -3874,12 +3890,6 @@ async function initPhone(){
   };
   $('worldBtnPhone').onclick = openWorlds;
   $('sndBtnPhone').onclick = ()=> sendCmd('sound');
-  document.querySelectorAll('#phoneActs .act').forEach(b => b.onclick = ()=>{
-    sendCmd('act', b.dataset.kind);
-    document.querySelectorAll('#phoneActs .act').forEach(x => x.classList.remove('lit'));
-    b.classList.add('lit');
-    setTimeout(()=> b.classList.remove('lit'), 11000);
-  });
   $('clearBtnPhone').onclick = ()=> phoneClear();
 
   const check = async ()=>{
@@ -4130,11 +4140,6 @@ if (!IS_PHONE){
   ['mousemove','pointerdown','keydown','touchstart'].forEach(ev => addEventListener(ev, wake, {passive:true}));
   addEventListener('resize', measureBar);
   measureBar();
-  // клавиши 1–6 — те же общие действия, что на пульте: удобно показывать с ноутбука
-  addEventListener('keydown', e => {
-    const k = ['dance','jump','run','sleep','scatter','parade'][+e.key - 1];
-    if (k && !e.metaKey && !e.ctrlKey && document.activeElement.tagName !== 'INPUT') startMood(k);
-  });
 }
 
 /* PWA: оболочка кешируется, миры всегда из сети */
