@@ -1,0 +1,10 @@
+data
+node_modules
+.git
+.claude
+*.heic
+test-*.jpg
+_face_test.jpg
+_test
+.DS_Store
+_incoming/

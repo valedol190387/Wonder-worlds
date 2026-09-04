@@ -1,0 +1,3543 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>WonderWorlds — оживи свой рисунок</title>
+<meta name="theme-color" content="#150b2e">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta property="og:title" content="WonderWorlds">
+<meta property="og:description" content="Нарисуй монстрика, сфоткай телефоном — и он оживёт на большом экране.">
+<meta property="og:image" content="/icons/og.jpg">
+<style>
+  :root{
+    --ui-bg: rgba(16,10,32,.82);
+    --ui-line: rgba(255,255,255,.14);
+    --accent: #ffd23f;
+    --accent2: #ff5d8f;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:#0b0616;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#fff}
+  #world{display:block;width:100%;height:100%;touch-action:none}
+
+  /* ---------- нижняя панель ---------- */
+  #bar{position:fixed;left:0;right:0;bottom:0;padding:14px calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
+    display:flex;gap:10px;align-items:center;justify-content:center;
+    background:linear-gradient(transparent,rgba(11,6,22,.75) 40%);pointer-events:none;z-index:5}
+  /* Панель — для компьютера. Телевизору она не нужна: пультом там служит
+     телефон, а на экране висит только QR в углу. Панель выезжает, лишь когда
+     кто-то реально шевельнул мышью или нажал клавишу. */
+  #bar{opacity:0;transform:translateY(14px);visibility:hidden;
+    transition:opacity .35s,transform .35s,visibility .35s}
+  body.desk #bar{opacity:1;transform:none;visibility:visible}
+  body.desk #bar>*{pointer-events:auto}
+  #help{opacity:0;transition:opacity .35s}
+  body.desk #help{opacity:.45}
+  .btn{border:0;border-radius:999px;padding:16px 26px;font-size:17px;font-weight:700;
+    background:var(--accent);color:#2a1a00;cursor:pointer;box-shadow:0 6px 22px rgba(255,210,63,.3);
+    transition:transform .12s}
+  .btn:active{transform:scale(.95)}
+  .btn svg{width:1.1em;height:1.1em;vertical-align:-0.18em;margin-right:8px;
+    stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+  .btn.icon{padding:16px 18px}
+  .btn.icon svg{margin-right:0;width:1.25em;height:1.25em}
+  #moveAskIcon svg,#phoneIcon svg{width:64px;height:64px;stroke:var(--accent);fill:none;
+    stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .btn.ghost{background:rgba(255,255,255,.13);color:#fff;box-shadow:none;font-weight:600;padding:16px 20px}
+  .count{font-size:14px;opacity:.6;padding:0 6px;font-variant-numeric:tabular-nums}
+
+  /* Большой экран: с дивана мелкое не читается — всё крупнее пропорционально */
+  @media (min-width:900px){
+    #bar{gap:14px}
+    #bar .btn{font-size:clamp(17px,1.35vw,26px);padding:.85em 1.5em}
+    #bar .btn.icon{padding:.85em 1em}
+    .row{gap:14px}
+    .row .btn{font-size:clamp(17px,1.25vw,24px);padding:.8em 1.5em}
+    #sheet h2,#worlds h2,#moveAsk h2,#gallery h2,#custom h2,#link h2{font-size:clamp(24px,2.1vw,40px)}
+    #sheet .sub,#worlds .sub,#gallery .sub,#link .sub{font-size:clamp(14px,1vw,19px)}
+    .wcard{width:clamp(132px,13vw,236px)}
+    .wcard canvas{height:auto;aspect-ratio:264 / 152}
+    .wcard span{font-size:clamp(13px,1vw,19px);padding:12px 6px}
+    #count{font-size:clamp(14px,1vw,18px)}
+    #tiles canvas{width:clamp(104px,8vw,150px);height:clamp(104px,8vw,150px)}
+  }
+
+  /* ---------- QR в углу телевизора ----------
+     Единственное, что нужно на самом экране: подошёл, навёл телефон —
+     и телефон стал пультом. */
+  #tvqr{position:fixed;left:calc(20px + env(safe-area-inset-left));
+    bottom:calc(20px + env(safe-area-inset-bottom));z-index:6;display:none;
+    align-items:center;gap:16px;background:var(--ui-bg);border:1px solid var(--ui-line);
+    border-radius:22px;padding:12px 22px 12px 12px;cursor:pointer;
+    backdrop-filter:blur(10px);box-shadow:0 10px 40px rgba(0,0,0,.45)}
+  body.tv #tvqr{display:flex}
+  #tvqrCv{width:clamp(104px,9vw,168px);height:auto;background:#fff;border-radius:14px;
+    padding:7px;image-rendering:pixelated;display:block}
+  #tvqrText{text-align:left;line-height:1.25}
+  #tvqrText b{display:block;font-size:clamp(13px,1.05vw,19px);font-weight:800;opacity:.92}
+  #tvqrCode{font-size:clamp(24px,2.3vw,44px);font-weight:800;letter-spacing:.16em;
+    color:var(--accent);margin:2px 0 4px}
+  #tvqrText span{display:block;font-size:clamp(11px,.85vw,15px);opacity:.5;max-width:19ch}
+
+  /* ---------- «подожди, обрабатываю» ----------
+     Ребёнку нужно видеть, что машинка думает, и не иметь возможности
+     нажать что-то ещё: экран перекрыт целиком. */
+  #busy{position:fixed;inset:0;z-index:40;display:none;flex-direction:column;
+    align-items:center;justify-content:center;gap:20px;padding:26px;text-align:center;
+    background:rgba(8,4,18,.96);backdrop-filter:blur(12px)}
+  #busy.on{display:flex}
+  #busyClock{width:clamp(120px,16vh,190px);height:clamp(120px,16vh,190px)}
+  #busyClock .face{fill:rgba(255,255,255,.06);stroke:rgba(255,255,255,.18);stroke-width:4}
+  #busyClock .arc{fill:none;stroke:var(--accent);stroke-width:6;stroke-linecap:round;
+    stroke-dasharray:72 192;transform-origin:50px 50px;animation:spin 2.4s linear infinite}
+  #busyClock .hand{stroke:#fff;stroke-linecap:round;transform-origin:50px 50px}
+  #busyClock .m{stroke-width:5;animation:spin 1.1s steps(12) infinite}
+  #busyClock .h{stroke-width:6;opacity:.8;animation:spin 6.6s steps(12) infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #busy h2{margin:0;font-size:clamp(22px,2.4vw,34px);font-weight:800}
+  #busy p{margin:0;font-size:clamp(14px,1.2vw,19px);opacity:.55}
+
+  /* ---------- пульт на телефоне ---------- */
+  #phoneGrid{display:grid;grid-template-columns:1fr 1fr;gap:11px;width:100%;max-width:430px}
+  .tile{border:0;border-radius:22px;background:rgba(255,255,255,.13);color:#fff;
+    padding:14px 8px;font-size:15px;font-weight:700;cursor:pointer;line-height:1.2;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+    min-height:92px;transition:transform .12s}
+  .tile:active{transform:scale(.95)}
+  .tile svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:2;
+    stroke-linecap:round;stroke-linejoin:round;margin:0}
+  .tile.wide{grid-column:1 / -1}
+  .tile.primary{background:var(--accent);color:#2a1a00;box-shadow:0 8px 26px rgba(255,210,63,.28);
+    min-height:104px;font-size:18px}
+  .tile.primary svg{width:38px;height:38px}
+  .tile.slim{min-height:64px;flex-direction:row;font-size:15px;font-weight:600;
+    background:rgba(255,255,255,.09)}
+  .tile.slim svg{width:22px;height:22px}
+  .tile.lit{background:var(--accent);color:#2a1a00}
+  #phoneWorld{font-size:13px;opacity:.55;margin:0}
+  body.phone #bgBtn,body.phone #bgClear{display:none}
+
+  /* ---------- рисование пальцем ---------- */
+  #draw{position:fixed;inset:0;z-index:32;display:none;flex-direction:column;gap:8px;
+    background:#150b2e;
+    padding:calc(8px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom))}
+  #draw.on{display:flex}
+  #drawCv{flex:1;min-height:0;width:100%;background:#fff;border-radius:18px;
+    touch-action:none;display:block;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+  #drawPal{display:flex;gap:9px;justify-content:center;flex-wrap:wrap;padding:2px}
+  .swatch{width:38px;height:38px;border-radius:50%;border:3px solid transparent;
+    cursor:pointer;padding:0;transition:transform .12s}
+  .swatch.sel{border-color:#fff;transform:scale(1.14)}
+  /* толщина кисти и ластик — квадратные, чтобы не путались с кружками цветов */
+  .sizeBtn{width:42px;height:42px;border-radius:13px;background:rgba(255,255,255,.12);border:0;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;color:#fff}
+  .sizeBtn i{display:block;background:#fff;border-radius:50%}
+  .sizeBtn.sel{background:var(--accent)} .sizeBtn.sel i{background:#2a1a00}
+  #drawBar{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  #drawBar .btn{padding:14px 20px;font-size:16px}
+
+  /* узкие экраны: панель в две строки, кнопки компактнее */
+  @media (max-width:640px){
+    #bar{flex-wrap:wrap;gap:8px;padding-top:10px}
+    #bar .btn{padding:12px 16px;font-size:15px}
+    #bar .btn.icon{padding:12px 14px}
+    #bar #addBtn{flex:1 1 100%;order:-1}
+    .row .btn{padding:13px 18px;font-size:15px}
+    #sheet{gap:12px;padding:16px}
+    #preview{height:min(34vh,300px)}
+    #tiles canvas{width:84px;height:84px}
+    #lassoCv{max-height:52vh}
+  }
+
+  /* ---------- шторка подтверждения ---------- */
+  #sheet{position:fixed;inset:0;background:rgba(6,3,14,.93);backdrop-filter:blur(14px);
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+    padding:24px;z-index:20;text-align:center}
+  #sheet.on{display:flex}
+  #sheet h2{margin:0;font-size:23px;font-weight:800;letter-spacing:-.02em}
+  #sheet .sub{margin:-10px 0 0;font-size:14px;opacity:.55;max-width:30ch;line-height:1.45}
+  #preview{width:min(58vw,300px);height:min(42vh,300px);object-fit:contain;
+    filter:drop-shadow(0 10px 30px rgba(0,0,0,.6))}
+  #nameIn{border:1px solid var(--ui-line);background:rgba(255,255,255,.07);color:#fff;
+    border-radius:14px;padding:13px 18px;font-size:16px;width:min(78vw,300px);text-align:center;outline:none}
+  #nameIn:focus{border-color:var(--accent)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+
+  /* плитки «не то» */
+  #tiles{display:none;gap:10px;flex-wrap:wrap;justify-content:center;max-width:min(92vw,620px)}
+  #tiles.on{display:flex}
+  #tiles canvas{width:104px;height:104px;object-fit:contain;background:rgba(255,255,255,.07);
+    border:3px solid transparent;border-radius:16px;padding:6px;cursor:pointer;
+    transition:transform .12s}
+  #tiles canvas:hover{border-color:rgba(255,210,63,.4)}
+  #tiles canvas.sel{border-color:var(--accent);background:rgba(255,210,63,.16);
+    transform:scale(1.06);box-shadow:0 4px 18px rgba(255,210,63,.25)}
+
+  /* кнопка-лампочка: горит — включено */
+  .btn.ghost.lit{background:var(--accent);color:#2a1a00;font-weight:700}
+
+  /* ---------- выбор мира ---------- */
+  #worlds{position:fixed;inset:0;background:rgba(6,3,14,.93);backdrop-filter:blur(14px);
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+    padding:24px;z-index:20;text-align:center}
+  #worlds.on{display:flex}
+  #worlds h2{margin:0;font-size:23px;font-weight:800;letter-spacing:-.02em}
+  #worlds .sub{margin:-10px 0 0;font-size:14px;opacity:.55}
+  #custom{position:fixed;inset:0;background:rgba(6,3,14,.96);backdrop-filter:blur(12px);
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+    padding:22px;z-index:27;text-align:center;overflow:auto}
+  #custom.on{display:flex}
+  #custom h2{margin:0;font-size:23px;font-weight:800}
+  #customBody{display:flex;flex-direction:column;gap:12px;align-items:center;
+    max-width:min(92vw,560px)}
+  .cline{margin:0;font-size:14px;line-height:1.5;opacity:.85;text-align:left;width:100%}
+  .cline b{color:var(--accent)}
+  #promptBox{width:100%}
+  #promptTxt{width:100%;height:96px;resize:none;border:1px solid var(--ui-line);
+    border-radius:12px;background:rgba(255,255,255,.06);color:#fff;opacity:.8;
+    font-size:12px;padding:10px;line-height:1.4}
+  #motionRow .btn{padding:12px 20px;font-size:15px}
+
+  #gallery,#galBig{position:fixed;inset:0;background:rgba(6,3,14,.95);backdrop-filter:blur(12px);
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    padding:20px;z-index:26;text-align:center;overflow:auto}
+  #gallery.on,#galBig.on{display:flex}
+  #gallery h2{margin:0;font-size:22px;font-weight:800}
+  #gallery .sub,#galBig .sub{margin:0;font-size:13px;opacity:.6;max-width:44ch}
+  #galTabs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  #galTabs button{border:0;border-radius:999px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;
+    background:rgba(255,255,255,.1);color:#fff}
+  #galTabs button.lit{background:var(--accent);color:#2a1a00}
+  #galGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:min(94vw,620px);width:100%}
+  @media (max-width:480px){ #galGrid{grid-template-columns:repeat(3,1fr)} }
+  #galGrid button{border:2px solid transparent;border-radius:16px;background:rgba(255,255,255,.07);padding:8px;cursor:pointer;aspect-ratio:1}
+  #galGrid button:active{border-color:var(--accent)}
+  #galGrid img{width:100%;height:100%;object-fit:contain}
+  #galBigImg{max-width:min(80vw,420px);max-height:52vh;object-fit:contain;
+    background:#fff;border-radius:18px;padding:14px}
+
+  #moveAsk{position:fixed;inset:0;background:rgba(6,3,14,.95);backdrop-filter:blur(12px);
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+    padding:24px;z-index:26;text-align:center}
+  #moveAsk.on{display:flex}
+  #moveAsk h2{margin:0;font-size:23px;font-weight:800}
+  #moveAskIcon{font-size:56px;line-height:1}
+  #moveAsk .btn{min-width:min(78vw,300px);font-size:17px}
+  #worldList{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;max-width:min(92vw,640px)}
+  .wcard{width:132px;border:2px solid transparent;border-radius:16px;overflow:hidden;
+    background:rgba(255,255,255,.07);cursor:pointer;padding:0}
+  .wcard.sel{border-color:var(--accent)}
+  .wcard canvas{display:block;width:100%;height:76px}
+  .wcard span{display:block;padding:9px 6px;font-size:13px;font-weight:600;color:#fff}
+
+  /* ---------- связь телефон ↔ телевизор ---------- */
+  #link{position:fixed;inset:0;background:rgba(6,3,14,.95);backdrop-filter:blur(14px);
+    display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+    padding:24px;z-index:22;text-align:center}
+  #link.on{display:flex}
+  #link h2{margin:0;font-size:clamp(20px,3vw,30px);font-weight:800;letter-spacing:-.02em}
+  #link .sub{margin:0;font-size:14px;opacity:.55;max-width:44ch;line-height:1.5}
+  .linkalt{background:rgba(255,255,255,.1);border:0;color:#fff;opacity:.65;
+    padding:8px 16px;border-radius:999px;font-size:13px;cursor:pointer}
+  .linkalt:active{opacity:1}
+  #qrbox{background:#fff;padding:14px;border-radius:18px;line-height:0}
+  #qr{width:min(46vh,300px);height:min(46vh,300px);image-rendering:pixelated}
+  #code{font-size:clamp(30px,6vw,54px);font-weight:800;letter-spacing:.22em;
+    color:var(--accent);font-variant-numeric:tabular-nums;padding-left:.22em}
+
+  /* ---------- экран телефона ---------- */
+  #phone{position:fixed;inset:0;z-index:15;display:none;flex-direction:column;
+    background:linear-gradient(160deg,#1b1030,#3a1a5e 55%,#6b3277);
+    padding:calc(16px + env(safe-area-inset-top)) 22px calc(22px + env(safe-area-inset-bottom))}
+  body.phone #phone{display:flex}
+  body.phone #bar,body.phone #world,body.phone #help{display:none}
+  #phoneTop{display:flex;justify-content:space-between;align-items:center;
+    font-size:13px;opacity:.6;flex:0 0 auto}
+  #phoneRoom{font-weight:800;letter-spacing:.18em;color:var(--accent);opacity:.9}
+  #phoneMid{flex:1;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:14px;text-align:center}
+  #phoneIcon{font-size:64px;line-height:1}
+  #phoneMid h1{margin:0;font-size:27px;font-weight:800;letter-spacing:-.02em}
+  #phoneMid p{margin:0;font-size:15px;opacity:.6;max-width:26ch;line-height:1.5}
+  .btn.big{margin-top:10px;padding:20px 32px;font-size:19px}
+  #phoneSent{position:fixed;left:0;right:0;bottom:0;top:0;display:none;
+    align-items:center;justify-content:center;background:rgba(10,5,22,.94);
+    font-size:22px;font-weight:800;z-index:25;text-align:center;padding:24px}
+  #phoneSent.on{display:flex}
+
+  /* ---------- обводка ---------- */
+  #lasso{position:fixed;inset:0;background:rgba(6,3,14,.96);display:none;
+    flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    padding:20px;z-index:30;text-align:center}
+  #lasso.on{display:flex}
+  #lasso h2{margin:0;font-size:21px;font-weight:800}
+  #lasso .sub{margin:-6px 0 0;font-size:13px;opacity:.55}
+  #lassoCv{touch-action:none;border-radius:14px;background:#fff;
+    max-width:94vw;max-height:62vh;cursor:crosshair}
+
+  /* ---------- живая камера ---------- */
+  #cam{position:fixed;inset:0;background:#000;display:none;z-index:28}
+  #cam.on{display:block}
+  #camVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  #camGuide{position:absolute;left:6%;right:6%;top:12%;bottom:24%;
+    border:3px dashed rgba(255,210,63,.85);border-radius:16px;pointer-events:none;
+    box-shadow:0 0 0 9999px rgba(0,0,0,.35)}
+  #camHint{position:absolute;left:0;right:0;top:calc(6% + env(safe-area-inset-top));text-align:center;
+    margin:0;font-size:15px;font-weight:600;text-shadow:0 1px 6px #000}
+  #camBar{position:absolute;left:0;right:0;bottom:calc(20px + env(safe-area-inset-bottom));
+    display:flex;align-items:center;justify-content:space-between;padding:0 24px}
+  #camShot{width:78px;height:78px;border-radius:50%;border:6px solid #fff;
+    background:var(--accent);cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.5)}
+  #camShot:active{transform:scale(.92)}
+
+  /* плашка звука: на телевизоре тапнуть нечем, нужна видимая кнопка */
+  #unmute{position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(96px + env(safe-area-inset-bottom));display:none;align-items:center;gap:10px;
+    background:var(--accent);color:#2a1a00;border:0;border-radius:999px;
+    padding:16px 28px;font-size:18px;font-weight:800;cursor:pointer;z-index:28;
+    box-shadow:0 8px 30px rgba(255,210,63,.35);animation:pulse 2s ease-in-out infinite}
+  body.mute #unmute{display:flex}
+  #unmute:focus-visible{outline:3px solid #fff}
+  @keyframes pulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.05)}}
+
+  /* ---------- статус / ошибки ---------- */
+  #toast{position:fixed;top:calc(16px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
+    background:var(--ui-bg);border:1px solid var(--ui-line);padding:11px 18px;border-radius:999px;
+    font-size:14px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:30;max-width:88vw}
+  #toast.on{opacity:1}
+
+  /* ---------- отладка ---------- */
+  #dbg{position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;display:none;gap:6px;z-index:25}
+  #dbg.on{display:flex}
+  #dbg canvas{width:104px;border:1px solid var(--ui-line);border-radius:8px;background:#000}
+  #help{position:fixed;top:calc(12px + env(safe-area-inset-top));right:12px;z-index:25;
+    background:rgba(255,255,255,.1);border:0;color:#fff;width:36px;height:36px;border-radius:50%;
+    font-size:15px;cursor:pointer;opacity:.5}
+  #help:active{opacity:1}
+</style>
+</head>
+<body>
+
+<canvas id="world"></canvas>
+
+<div id="bar">
+  <button class="btn" id="addBtn">Добавить монстрика</button>
+  <button class="btn ghost" id="tvBtn">Код мира</button>
+  <button class="btn ghost" id="worldBtn">Мир</button>
+  <button class="btn ghost" id="galBtn">Готовые</button>
+  <button class="btn ghost icon" id="sndBtn" title="Звуки"></button>
+  <button class="btn ghost icon" id="musBtn" title="Музыка"></button>
+  <button class="btn ghost icon" id="clearBtn" title="Убрать всех"></button>
+  <span class="count" id="count">0</span>
+</div>
+
+<!-- телевизор: код комнаты и QR для телефона -->
+<!-- телевизор: единственный элемент управления на самом экране -->
+<div id="tvqr" title="Открыть большой код">
+  <canvas id="tvqrCv"></canvas>
+  <div id="tvqrText">
+    <b>Наведи телефон</b>
+    <div id="tvqrCode">·····</div>
+    <span>Телефон станет пультом: рисунки, миры, звук</span>
+  </div>
+</div>
+
+<div id="link">
+  <h2>Наведи телефон на этот код</h2>
+  <p class="sub">Обычной камерой телефона. Откроется страница, где можно фоткать рисунки — они появятся здесь.
+  А чтобы открыть этот мир на другом экране, введи код на главной странице.</p>
+  <div id="qrbox"><canvas id="qr"></canvas></div>
+  <div id="code">····</div>
+  <p class="sub" id="linkUrl"></p>
+  <button class="linkalt" id="linkAddr" style="display:none"></button>
+  <p class="sub" id="linkState">Подключаюсь…</p>
+  <div class="row">
+    <button class="btn" id="linkHide">Свернуть</button>
+    <button class="btn ghost" id="linkCopy">Скопировать ссылку</button>
+  </div>
+</div>
+
+<!-- телефон: только съёмка -->
+<div id="phone">
+  <div id="phoneTop">
+    <span id="phoneRoom">····</span>
+    <span id="phoneState">проверяю связь…</span>
+  </div>
+  <div id="phoneMid">
+    <h1>Пульт</h1>
+    <p id="phoneWorld">&nbsp;</p>
+    <div id="phoneGrid">
+      <button class="tile primary wide" id="shotBtn">Сфоткать рисунок</button>
+      <button class="tile primary" id="drawBtn">Нарисовать пальцем</button>
+      <button class="tile" id="galBtnPhone">Готовые</button>
+      <button class="tile" id="worldBtnPhone">Сменить мир</button>
+      <button class="tile" id="sndBtnPhone">Звук</button>
+      <button class="tile slim wide" id="clearBtnPhone">Убрать всех с экрана</button>
+    </div>
+  </div>
+  <div id="phoneSent">Отправлено! Смотри на экран</div>
+</div>
+
+<!-- живая камера: только по HTTPS, иначе браузер её не даст -->
+<div id="cam">
+  <video id="camVideo" playsinline autoplay muted></video>
+  <div id="camGuide"></div>
+  <p id="camHint">Положи лист целиком в рамку</p>
+  <div id="camBar">
+    <button class="btn ghost" id="camGallery">Из галереи</button>
+    <button id="camShot" aria-label="Снять"></button>
+    <button class="btn ghost" id="camClose">Отмена</button>
+  </div>
+</div>
+
+<div id="worlds">
+  <h2>Выбери мир</h2>
+  <p class="sub">Можно поставить и свою картинку фоном.</p>
+  <div id="worldList"></div>
+  <div class="row">
+    <button class="btn ghost" id="bgBtn">Свой фон</button>
+    <button class="btn ghost" id="bgClear">Убрать свой фон</button>
+    <button class="btn ghost" id="worldClose">Закрыть</button>
+  </div>
+</div>
+
+<div id="sheet">
+  <h2 id="sheetTitle">Вот твой монстрик!</h2>
+  <p class="sub" id="sheetSub">Если поймали не того — жми «Не то».</p>
+  <canvas id="preview"></canvas>
+  <div id="tiles"></div>
+  <input id="nameIn" placeholder="Как его зовут?" maxlength="18" autocomplete="off">
+  <div class="row">
+    <button class="btn" id="goBtn">Полетели!</button>
+    <button class="btn ghost" id="rotBtn">Повернуть</button>
+    <button class="btn ghost" id="lassoBtn">Обвести</button>
+    <button class="btn ghost" id="cancelBtn">Отмена</button>
+  </div>
+</div>
+
+<div id="custom">
+  <h2>Свой мир</h2>
+  <div id="customBody">
+    <p class="cline"><b>Сгенерировать нейросетью.</b> Скопируй задание, вставь в ChatGPT
+    или любую нейросеть для картинок и допиши в начало, что это за место —
+    «волшебный лес», «морское дно», «комната великана»…</p>
+    <div id="promptBox"><textarea id="promptTxt" readonly>Нарисуй фон для детской игры: [НАПИШИ, ЧТО ЭТО ЗА МЕСТО]. Широкая картинка 16:9. Линия горизонта — строго горизонтальная, ровно на одной трети сверху. Нижние две трети — ровная пустая площадка, уходящая вдаль: у зрителя детали крупные, к горизонту мелкие. Середина площадки совершенно пустая, украшения только у левого и правого края. Без людей, животных и персонажей, без надписей. Мягкий ровный свет без резких теней, спокойные неяркие цвета, стиль детской книжной иллюстрации.</textarea></div>
+    <button class="btn ghost" id="copyPrompt">Скопировать задание</button>
+    <p class="cline"><b>Или нарисовать с ребёнком.</b> Лист — поперёк. Проведи линию
+    на трети сверху: выше — небо, ниже — земля или пол. Середину не загромождайте,
+    и сфотографируй готовый рисунок этой же кнопкой ниже.</p>
+    <p class="cline"><b>Как будут двигаться жители этого мира?</b></p>
+    <div class="row" id="motionRow">
+      <button class="btn ghost lit" id="mHop">Прыгают</button>
+      <button class="btn ghost" id="mDrive">Ездят</button>
+      <button class="btn ghost" id="mFly">Летают</button>
+    </div>
+  </div>
+  <div class="row">
+    <button class="btn" id="customPick">Выбрать картинку</button>
+    <button class="btn ghost" id="customCancel">Отмена</button>
+  </div>
+</div>
+
+<div id="gallery">
+  <h2>Готовые жители</h2>
+  <p class="sub">Нажми — и он появится в мире. Или срисуй: открой крупно и повторяй на бумаге.</p>
+  <div id="galTabs"></div>
+  <div id="galGrid"></div>
+  <div class="row"><button class="btn ghost" id="galClose">Закрыть</button></div>
+</div>
+<div id="galBig">
+  <img id="galBigImg" alt="">
+  <p class="sub">Срисовывай не спеша — фломастерами на чистом листе</p>
+  <div class="row">
+    <button class="btn" id="galAdd">Добавить в мир</button>
+    <button class="btn ghost" id="galBack">Назад</button>
+  </div>
+</div>
+
+<div id="moveAsk">
+  <div id="moveAskIcon"></div>
+  <h2>Монстрики поедут с тобой?</h2>
+  <div class="row" style="flex-direction:column;gap:12px">
+    <button class="btn" id="moveYes">Да, взять с собой</button>
+    <button class="btn ghost" id="moveNo">Нет, начать пусто</button>
+    <button class="btn ghost" id="moveCancel">Отмена</button>
+  </div>
+</div>
+
+<div id="lasso">
+  <h2>Обведи того, кого запускаем</h2>
+  <p class="sub">Пальцем или мышкой, примерно — внутрь попадёт только рисунок.</p>
+  <canvas id="lassoCv"></canvas>
+  <div class="row">
+    <button class="btn" id="lassoOk">Готово</button>
+    <button class="btn ghost" id="lassoBgBtn">Фон</button>
+    <button class="btn ghost" id="lassoRedo">Заново</button>
+    <button class="btn ghost" id="lassoCancel">Отмена</button>
+  </div>
+</div>
+
+<!-- пока считаем: экран закрыт целиком, нажать больше нечего -->
+<div id="busy">
+  <svg id="busyClock" viewBox="0 0 100 100" aria-hidden="true">
+    <circle class="face" cx="50" cy="50" r="42"/>
+    <circle class="arc"  cx="50" cy="50" r="42"/>
+    <line class="hand h" x1="50" y1="50" x2="50" y2="30"/>
+    <line class="hand m" x1="50" y1="50" x2="50" y2="20"/>
+    <circle cx="50" cy="50" r="4" fill="#fff"/>
+  </svg>
+  <h2 id="busyTitle">Оживляю монстрика…</h2>
+  <p id="busySub">Немножко подожди</p>
+</div>
+
+<!-- рисование прямо на телефоне: белый лист, кисть и цвета -->
+<div id="draw">
+  <canvas id="drawCv"></canvas>
+  <div id="drawPal"></div>
+  <div id="drawBar">
+    <button class="btn" id="drawGo">Оживить!</button>
+    <button class="btn ghost" id="drawUndo">Шаг назад</button>
+    <button class="btn ghost" id="drawWipe">Стереть всё</button>
+    <button class="btn ghost" id="drawClose">Закрыть</button>
+  </div>
+</div>
+
+<button id="unmute">Включить звук</button>
+<div id="toast"></div>
+<div id="dbg"><canvas id="dbg1"></canvas><canvas id="dbg2"></canvas></div>
+<button id="help" title="Отладка">?</button>
+<input type="file" id="file" accept="image/*,.heic,.heif" capture="environment" hidden>
+<input type="file" id="bgFile" accept="image/*,.heic,.heif" hidden>
+
+<script src="/vendor/qrcode.js"></script>
+<script>
+/* Единый набор SVG-иконок (Feather, MIT) вместо разнобоя эмодзи. */
+const ICONS = {
+  plus:   '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  tv:     '<rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/>',
+  globe:  '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+  vol:    '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>',
+  volx:   '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>',
+  music:  '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  trash:  '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+  send:   '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
+  rotcw:  '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
+  rotccw: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
+  cut:    '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>',
+  check:  '<polyline points="20 6 9 17 4 12"/>',
+  image:  '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
+  camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+  x:      '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  pen:    '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>',
+  eraser: '<path d="M20 20H8.5L3 14.5a2 2 0 0 1 0-2.8l8-8a2 2 0 0 1 2.8 0l6.5 6.5a2 2 0 0 1 0 2.8L13 20"/><line x1="8.5" y1="20" x2="20" y2="20"/>',
+  bag:    '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+};
+const ico = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
+</script>
+<script>
+"use strict";
+
+/* =====================================================================
+   ЧАСТЬ 1. ВЫРЕЗАНИЕ РИСУНКА
+   Чистый JS, без библиотек. Всё считается на устройстве.
+   лист -> перспектива -> выравнивание света -> маска краски -> объекты
+   ===================================================================== */
+
+const PROC_MAX = 1100;          // до какого размера ужимаем для обработки
+
+function toImageData(img, maxSide){
+  const s = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const w = Math.round(img.width * s), h = Math.round(img.height * s);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d', {willReadFrequently:true});
+  x.drawImage(img, 0, 0, w, h);
+  return x.getImageData(0, 0, w, h);
+}
+
+/* --- порог Оцу по гистограмме --- */
+function otsu(hist, total){
+  let sum = 0; for (let i=0;i<256;i++) sum += i*hist[i];
+  let sumB=0, wB=0, best=0, thr=0;
+  for (let t=0;t<256;t++){
+    wB += hist[t]; if (!wB) continue;
+    const wF = total - wB; if (!wF) break;
+    sumB += t*hist[t];
+    const mB = sumB/wB, mF = (sum-sumB)/wF;
+    const v = wB*wF*(mB-mF)*(mB-mF);
+    if (v > best){ best = v; thr = t; }
+  }
+  return thr;
+}
+
+/* --- связные компоненты (итеративная заливка) --- */
+function labelComponents(mask, w, h){
+  const lab = new Int32Array(w*h);
+  const stack = new Int32Array(w*h);
+  const stats = [null];                     // 0 = фон
+  let next = 1;
+  for (let i=0;i<w*h;i++){
+    if (!mask[i] || lab[i]) continue;
+    let sp = 0; stack[sp++] = i; lab[i] = next;
+    let cnt=0, minx=w, miny=h, maxx=0, maxy=0;
+    while (sp){
+      const p = stack[--sp];
+      const x = p % w, y = (p / w) | 0;
+      cnt++;
+      if (x<minx) minx=x; if (x>maxx) maxx=x;
+      if (y<miny) miny=y; if (y>maxy) maxy=y;
+      for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++){
+        if (!dx && !dy) continue;
+        const nx = x+dx, ny = y+dy;
+        if (nx<0||ny<0||nx>=w||ny>=h) continue;
+        const q = ny*w+nx;
+        if (mask[q] && !lab[q]){ lab[q] = next; stack[sp++] = q; }
+      }
+    }
+    stats.push({id:next, area:cnt, x:minx, y:miny, w:maxx-minx+1, h:maxy-miny+1});
+    next++;
+  }
+  return {lab, stats};
+}
+
+/* --- 1. найти лист бумаги --- */
+function detectPaper(id){
+  const {width:w, height:h, data:d} = id;
+  const gray = new Uint8Array(w*h), hist = new Uint32Array(256);
+  for (let i=0, p=0; i<w*h; i++, p+=4){
+    const g = (d[p]*0.299 + d[p+1]*0.587 + d[p+2]*0.114) | 0;
+    gray[i] = g; hist[g]++;
+  }
+  const t = otsu(hist, w*h);
+  const bright = new Uint8Array(w*h);
+  for (let i=0;i<w*h;i++) bright[i] = gray[i] > t ? 1 : 0;
+
+  const {lab, stats} = labelComponents(bright, w, h);
+  let best = null;
+  for (let i=1;i<stats.length;i++) if (!best || stats[i].area > best.area) best = stats[i];
+  if (!best || best.area < 0.40*w*h) return null;   // лист — это минимум пол-кадра, иначе это объект
+
+  // 4 угла = экстремумы по x+y и x-y внутри компоненты листа
+  let tl=null, tr=null, br=null, bl=null;
+  let sMin=1e9, sMax=-1e9, dMin=1e9, dMax=-1e9;
+  for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+    if (lab[y*w+x] !== best.id) continue;
+    const s = x+y, df = x-y;
+    if (s<sMin){sMin=s; tl=[x,y];}  if (s>sMax){sMax=s; br=[x,y];}
+    if (df>dMax){dMax=df; tr=[x,y];} if (df<dMin){dMin=df; bl=[x,y];}
+  }
+  return {quad:[tl,tr,br,bl], coverage: best.area/(w*h)};
+}
+
+/* --- решаем систему 8x8 (гомография) --- */
+function solve(A, b){
+  const n = 8;
+  for (let c=0;c<n;c++){
+    let piv = c;
+    for (let r=c+1;r<n;r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+    [A[c], A[piv]] = [A[piv], A[c]]; [b[c], b[piv]] = [b[piv], b[c]];
+    const pv = A[c][c]; if (Math.abs(pv) < 1e-12) return null;
+    for (let r=0;r<n;r++){
+      if (r===c) continue;
+      const f = A[r][c]/pv;
+      for (let k=c;k<n;k++) A[r][k] -= f*A[c][k];
+      b[r] -= f*b[c];
+    }
+  }
+  return b.map((v,i)=> v/A[i][i]);
+}
+
+/* --- 2. выпрямить лист (dst -> src, билинейная выборка) --- */
+function warpPaper(id, quad, margin=0.015){
+  const [tl,tr,br,bl] = quad;
+  const dist = (a,b)=>Math.hypot(a[0]-b[0], a[1]-b[1]);
+  let W = Math.round(Math.max(dist(tl,tr), dist(bl,br)));
+  let H = Math.round(Math.max(dist(tl,bl), dist(tr,br)));
+  const s = Math.min(1, PROC_MAX/Math.max(W,H));
+  W = Math.max(32, Math.round(W*s)); H = Math.max(32, Math.round(H*s));
+
+  const dst = [[0,0],[W-1,0],[W-1,H-1],[0,H-1]], src = [tl,tr,br,bl];
+  const A = [], b = [];
+  for (let i=0;i<4;i++){
+    const [x,y] = dst[i], [u,v] = src[i];
+    A.push([x,y,1,0,0,0,-x*u,-y*u]); b.push(u);
+    A.push([0,0,0,x,y,1,-x*v,-y*v]); b.push(v);
+  }
+  const hm = solve(A, b);
+  if (!hm) return null;
+  const [h0,h1,h2,h3,h4,h5,h6,h7] = hm;
+
+  const out = new ImageData(W, H);
+  const sd = id.data, sw = id.width, sh = id.height;
+  for (let y=0;y<H;y++) for (let x=0;x<W;x++){
+    const den = h6*x + h7*y + 1;
+    const u = (h0*x + h1*y + h2)/den, v = (h3*x + h4*y + h5)/den;
+    const o = (y*W+x)*4;
+    if (u<0||v<0||u>=sw-1||v>=sh-1){ out.data[o+3]=255; continue; }
+    const x0=u|0, y0=v|0, fx=u-x0, fy=v-y0;
+    for (let ch=0; ch<3; ch++){
+      const p00 = sd[(y0*sw+x0)*4+ch],     p10 = sd[(y0*sw+x0+1)*4+ch];
+      const p01 = sd[((y0+1)*sw+x0)*4+ch], p11 = sd[((y0+1)*sw+x0+1)*4+ch];
+      out.data[o+ch] = (p00*(1-fx)*(1-fy) + p10*fx*(1-fy) + p01*(1-fx)*fy + p11*fx*fy)|0;
+    }
+    out.data[o+3] = 255;
+  }
+  // срезаем края листа (тень, загиб)
+  const mx = Math.round(W*margin), my = Math.round(H*margin);
+  return cropImageData(out, mx, my, W-2*mx, H-2*my);
+}
+
+function cropImageData(id, x, y, w, h){
+  w = Math.max(1,w); h = Math.max(1,h);
+  const out = new ImageData(w, h);
+  for (let j=0;j<h;j++){
+    const so = ((y+j)*id.width + x)*4, dof = j*w*4;
+    out.data.set(id.data.subarray(so, so + w*4), dof);
+  }
+  return out;
+}
+
+/* --- 3. оценка цвета БУМАГИ, а не усреднение всего подряд ---
+
+   Средняя яркость по окну — плохая оценка фона: если закрашенное пятно
+   (лицо, пузо монстра) крупнее окна, оно становится «фоном» само себе
+   и стирается из маски. Поэтому фон ищем как ЛОКАЛЬНЫЙ МАКСИМУМ яркости:
+   бумага всегда светлее краски, лежащей на ней.
+
+   Сетка грубая (краска на ней исчезает), потом дилатация протаскивает
+   бумагу в клетки, закрашенные целиком, потом сглаживание и растяжка. */
+function estimatePaper(id){
+  const {width:w, height:h, data:d} = id;
+  const GW = 48, GH = Math.max(6, Math.round(GW*h/w));
+  const g = new Float32Array(GW*GH*3), lum = new Float32Array(GW*GH);
+
+  for (let gy=0; gy<GH; gy++) for (let gx=0; gx<GW; gx++){
+    const x0 = Math.floor(gx*w/GW), x1 = Math.max(x0+1, Math.floor((gx+1)*w/GW));
+    const y0 = Math.floor(gy*h/GH), y1 = Math.max(y0+1, Math.floor((gy+1)*h/GH));
+    let best = -1, br=255, bg=255, bb=255;
+    for (let y=y0;y<y1;y++) for (let x=x0;x<x1;x++){
+      const p = (y*w+x)*4;
+      const L = d[p]*0.299 + d[p+1]*0.587 + d[p+2]*0.114;
+      if (L > best){ best = L; br = d[p]; bg = d[p+1]; bb = d[p+2]; }
+    }
+    const i = gy*GW+gx;
+    g[i*3] = br; g[i*3+1] = bg; g[i*3+2] = bb; lum[i] = best;
+  }
+
+  /* Клетка, целиком закрашенная краской, врёт про цвет бумаги — её надо
+     починить по соседям. Но тянуть максимум по всей сетке нельзя: блик с
+     одного края уползёт на другой, и затенённая бумага там запишется в
+     краску. Поэтому чиним ТОЛЬКО клетки, которые заметно темнее окружения,
+     и берём медианного соседа, а не самого яркого. */
+  for (let pass=0; pass<2; pass++){
+    const src = g.slice(), sl = lum.slice();
+    for (let gy=0; gy<GH; gy++) for (let gx=0; gx<GW; gx++){
+      const i = gy*GW+gx, nb = [];
+      for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++){
+        if (!dx && !dy) continue;
+        const nx=gx+dx, ny=gy+dy;
+        if (nx<0||ny<0||nx>=GW||ny>=GH) continue;
+        nb.push(ny*GW+nx);
+      }
+      if (!nb.length) continue;
+      const med = nb.map(j=>sl[j]).sort((a,b)=>a-b)[nb.length>>1];
+      if (sl[i] >= med*0.86) continue;          // обычный перепад света — не трогаем
+      let bi = nb[0];
+      for (const j of nb) if (Math.abs(sl[j]-med) < Math.abs(sl[bi]-med)) bi = j;
+      g[i*3]=src[bi*3]; g[i*3+1]=src[bi*3+1]; g[i*3+2]=src[bi*3+2]; lum[i]=sl[bi];
+    }
+  }
+
+  // сглаживаем, чтобы не было ступенек на границах клеток
+  for (let pass=0; pass<2; pass++){
+    const src = g.slice();
+    for (let gy=0; gy<GH; gy++) for (let gx=0; gx<GW; gx++){
+      const i = gy*GW+gx;
+      for (let ch=0; ch<3; ch++){
+        let s=0, n=0;
+        for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++){
+          const nx=gx+dx, ny=gy+dy;
+          if (nx<0||ny<0||nx>=GW||ny>=GH) continue;
+          s += src[(ny*GW+nx)*3+ch]; n++;
+        }
+        g[i*3+ch] = s/n;
+      }
+    }
+  }
+  return {g, GW, GH};
+}
+
+function inkScore(id){
+  const {width:w, height:h, data:d} = id;
+  const {g, GW, GH} = estimatePaper(id);
+
+  // билинейно растягиваем сетку бумаги обратно на полный размер
+  const norm = new Uint8ClampedArray(w*h*3);
+  for (let y=0;y<h;y++){
+    const fy = Math.min(GH-1.001, (y+0.5)*GH/h - 0.5);
+    const gy = Math.max(0, fy|0), ty = Math.max(0, fy-gy), gy1 = Math.min(GH-1, gy+1);
+    for (let x=0;x<w;x++){
+      const fx = Math.min(GW-1.001, (x+0.5)*GW/w - 0.5);
+      const gx = Math.max(0, fx|0), tx = Math.max(0, fx-gx), gx1 = Math.min(GW-1, gx+1);
+      for (let ch=0; ch<3; ch++){
+        const a = g[(gy*GW+gx)*3+ch],  b = g[(gy*GW+gx1)*3+ch];
+        const c = g[(gy1*GW+gx)*3+ch], e = g[(gy1*GW+gx1)*3+ch];
+        const bg = Math.max(1, (a*(1-tx)+b*tx)*(1-ty) + (c*(1-tx)+e*tx)*ty);
+        norm[(y*w+x)*3+ch] = (d[(y*w+x)*4+ch] / bg) * 240;
+      }
+    }
+  }
+
+  // бумага после нормализации белая; любая краска роняет хотя бы один канал
+  const score = new Uint8Array(w*h), hist = new Uint32Array(256);
+  let n = 0;
+  for (let i=0;i<w*h;i++){
+    const m = Math.min(norm[i*3], norm[i*3+1], norm[i*3+2]);
+    const v = Math.max(0, 255 - m) | 0;
+    score[i] = v;
+    if (v > 12){ hist[v]++; n++; }
+  }
+  // порог ниже, чем был: бумага теперь нормализуется точнее, а бледная
+  // закраска (лицо, карандаш) должна выживать
+  let thr = 28;
+  if (n > 500) thr = Math.min(78, Math.max(22, otsu(hist, n) * 0.5));
+  return {score, norm, thr, w, h};
+}
+
+function buildMask(score, w, h, thr){
+  const m = new Uint8Array(w*h);
+  for (let i=0;i<w*h;i++) m[i] = score[i] >= thr ? 1 : 0;
+  return morph(morph(m, w, h, 0, 1), w, h, 1, 2);   // open(1) -> close(2)
+}
+
+/* грубая морфология квадратным ядром */
+function morph(src, w, h, dilate, r){
+  let cur = src;
+  const pass = (inp, want) => {
+    const out = new Uint8Array(w*h);
+    for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+      let hit = 0;
+      for (let dy=-r; dy<=r && !hit; dy++) for (let dx=-r; dx<=r; dx++){
+        const nx=x+dx, ny=y+dy;
+        const v = (nx<0||ny<0||nx>=w||ny>=h) ? 0 : inp[ny*w+nx];
+        if (v === want){ hit = 1; break; }
+      }
+      out[y*w+x] = want ? hit : (hit ? 0 : 1);
+    }
+    return out;
+  };
+  cur = dilate ? pass(cur, 1) : pass(cur, 0);       // dilate / erode
+  cur = dilate ? pass(cur, 0) : pass(cur, 1);       // -> close / open
+  return cur;
+}
+
+/* --- 4. кто здесь герой: эвристика без всякого ИИ --- */
+function rankObjects(mask, w, h){
+  const link = Math.max(2, Math.round(Math.min(w,h)*0.02));
+  const glued = morph(mask, w, h, 1, link);          // склеиваем близкие штрихи
+  const {lab, stats} = labelComponents(glued, w, h);
+
+  const cx = w/2, cy = h/2, diag = Math.hypot(w,h);
+  const objs = [];
+  for (let i=1;i<stats.length;i++){
+    const s = stats[i];
+    let ink = 0;
+    for (let y=s.y; y<s.y+s.h; y++) for (let x=s.x; x<s.x+s.w; x++){
+      const p = y*w+x; if (lab[p]===s.id && mask[p]) ink++;
+    }
+    if (ink < 0.002*w*h) continue;
+
+    const ox = s.x + s.w/2, oy = s.y + s.h/2;
+    const centerBonus = 1 - 0.55 * (Math.hypot(ox-cx, oy-cy) / (diag/2));
+    const touchesEdge = (s.x < w*0.02 || s.y < h*0.02 ||
+                         s.x+s.w > w*0.98 || s.y+s.h > h*0.98);
+    const fill = ink / (s.w*s.h);
+    s.ink = ink;
+    s.score = ink * centerBonus * (touchesEdge ? 0.45 : 1) * (0.5 + Math.min(1, fill));
+    objs.push(s);
+  }
+  objs.sort((a,b)=> b.score - a.score);
+  return {objs, lab};
+}
+
+/* --- 5. вырезаем спрайт: PNG-подобный канвас с альфой --- */
+function makeSprite(rgb, mask, lab, obj, w, h){
+  const pad = 6;
+  const x0 = Math.max(0, obj.x-pad), y0 = Math.max(0, obj.y-pad);
+  const x1 = Math.min(w, obj.x+obj.w+pad), y1 = Math.min(h, obj.y+obj.h+pad);
+  const sw = x1-x0, sh = y1-y0;
+
+  const a = new Uint8Array(sw*sh);
+  for (let y=0;y<sh;y++) for (let x=0;x<sw;x++){
+    const p = (y0+y)*w + (x0+x);
+    a[y*sw+x] = (lab[p]===obj.id && mask[p]) ? 1 : 0;
+  }
+  fillHoles(a, sw, sh);
+
+  const c = document.createElement('canvas'); c.width = sw; c.height = sh;
+  const ctx = c.getContext('2d');
+  const out = ctx.createImageData(sw, sh);
+  for (let y=0;y<sh;y++) for (let x=0;x<sw;x++){
+    const si = (y0+y)*w + (x0+x), di = (y*sw+x)*4;
+    out.data[di]   = rgb[si*3];
+    out.data[di+1] = rgb[si*3+1];
+    out.data[di+2] = rgb[si*3+2];
+    out.data[di+3] = a[y*sw+x] ? 255 : 0;
+  }
+  ctx.putImageData(out, 0, 0);
+  return softenEdge(c);
+}
+
+/* Внутренние пустоты (лицо, пузо) заливаем — иначе персонаж будет бубликом.
+   Но только МАЛЕНЬКИЕ: если штрихи случайно замкнули кольцо вокруг пол-листа
+   (руки дотянулись до травы), заливка утащит внутрь чистую бумагу. */
+function fillHoles(a, w, h, maxFrac=0.35){
+  const outside = new Uint8Array(w*h);
+  const st = new Int32Array(w*h); let sp = 0;
+  const push = i => { if (!a[i] && !outside[i]){ outside[i]=1; st[sp++]=i; } };
+  for (let x=0;x<w;x++){ push(x); push((h-1)*w+x); }
+  for (let y=0;y<h;y++){ push(y*w); push(y*w+w-1); }
+  while (sp){
+    const p = st[--sp], x = p%w, y = (p/w)|0;
+    if (x>0) push(p-1); if (x<w-1) push(p+1);
+    if (y>0) push(p-w); if (y<h-1) push(p+w);
+  }
+
+  // Оставшиеся пустоты разбираем по одной.
+  // Настоящая внутренняя дырка (незакрашенное пузо, лицо) лежит глубоко
+  // внутри силуэта. Ложная — это полоса чистой бумаги, которую случайно
+  // окольцевали штрихи; она всегда дотягивается до края рамки объекта.
+  const m = Math.max(3, Math.round(Math.min(w,h)*0.03));
+  const seen = new Uint8Array(w*h);
+  const buf = new Int32Array(w*h);
+  for (let i0=0;i0<w*h;i0++){
+    if (a[i0] || outside[i0] || seen[i0]) continue;
+    let n = 0, top = 0;
+    let mnx=w, mny=h, mxx=0, mxy=0;
+    buf[top++] = i0; seen[i0] = 1;
+    const cells = [];
+    while (top){
+      const p = buf[--top], x = p%w, y = (p/w)|0;
+      cells.push(p); n++;
+      if (x<mnx) mnx=x; if (x>mxx) mxx=x;
+      if (y<mny) mny=y; if (y>mxy) mxy=y;
+      const nb = [x>0?p-1:-1, x<w-1?p+1:-1, y>0?p-w:-1, y<h-1?p+w:-1];
+      for (const q of nb){
+        if (q < 0 || a[q] || outside[q] || seen[q]) continue;
+        seen[q] = 1; buf[top++] = q;
+      }
+    }
+    const touchesRim = mnx <= m || mny <= m || mxx >= w-1-m || mxy >= h-1-m;
+    if (!touchesRim && n <= maxFrac*w*h) for (const p of cells) a[p] = 1;
+  }
+}
+
+/* лёгкое размытие альфы, чтобы край не был «пилой» */
+function softenEdge(c){
+  const o = document.createElement('canvas');
+  o.width = c.width; o.height = c.height;
+  const x = o.getContext('2d');
+  x.filter = 'blur(0.6px)';
+  x.drawImage(c, 0, 0);
+  x.filter = 'none';
+  return o;
+}
+
+/* --- фон «магической палочкой» ---
+   Фон — это то, что цветом ПЛАВНО тянется от краёв кадра внутрь: стена,
+   стол, небо. Заливка идёт от всех граничных пикселей и шагает на соседа,
+   только если цвет почти не изменился; на границе объекта — резкий скачок,
+   и волна останавливается. Для листа бумаги безвредно: там от краёв
+   разливается сама бумага, которую маска и так не считает рисунком. */
+function borderBackground(rgb, w, h, tol=42){
+  const bg = new Uint8Array(w*h);
+  const q = new Int32Array(w*h); let head = 0, tail = 0;
+  const push = i => { if (!bg[i]){ bg[i] = 1; q[tail++] = i; } };
+  for (let x=0;x<w;x++){ push(x); push((h-1)*w+x); }
+  for (let y=0;y<h;y++){ push(y*w); push(y*w+w-1); }
+  while (head < tail){
+    const i = q[head++];
+    const x = i%w, y = (i/w)|0;
+    const r = rgb[i*3], g = rgb[i*3+1], b = rgb[i*3+2];
+    const nb = [x>0?i-1:-1, x<w-1?i+1:-1, y>0?i-w:-1, y<h-1?i+w:-1];
+    for (const j of nb){
+      if (j < 0 || bg[j]) continue;
+      const d = Math.abs(rgb[j*3]-r) + Math.abs(rgb[j*3+1]-g) + Math.abs(rgb[j*3+2]-b);
+      if (d < tol) push(j);
+    }
+  }
+  return bg;
+}
+
+/* --- полный проход --- */
+function extract(img){
+  const id = toImageData(img, 1500);
+  const paper = detectPaper(id);
+  let sheet;
+  if (paper && paper.coverage > 0.40){
+    sheet = warpPaper(id, paper.quad) || toImageData(img, PROC_MAX);
+    // Детектор мог принять за «лист» любое светлое пятно (лицо на селфи!).
+    // Настоящая бумага — примерно А4: слишком вытянутый результат отменяем.
+    const ar = sheet.width / sheet.height;
+    if (ar < 0.5 || ar > 2.1) sheet = toImageData(img, PROC_MAX);
+  } else {
+    sheet = toImageData(img, PROC_MAX);   // лист не нашли — берём кадр как есть
+  }
+  const {score, norm, thr, w, h} = inkScore(sheet);
+  const mask = buildMask(score, w, h, thr);
+  const {objs, lab} = rankObjects(mask, w, h);
+  if (!objs.length) return {ok:false, reason:'На листе ничего не нашлось'};
+
+  // Для цвета берём ОРИГИНАЛ листа, а не нормализованную версию: та существует
+  // ради маски (убрать тень с бумаги), но фотографию она превращает в молоко.
+  const rgb = new Uint8ClampedArray(w*h*3);
+  for (let i=0;i<w*h;i++){
+    rgb[i*3]   = sheet.data[i*4];
+    rgb[i*3+1] = sheet.data[i*4+1];
+    rgb[i*3+2] = sheet.data[i*4+2];
+  }
+
+  /* Объект — это всё, что НЕ фон. «Чернильная» маска хороша для рисунков,
+     но на фотографии светлая кожа выглядит для неё бумагой — получаются дыры.
+     Поэтому: маска := чернила ∪ не-фон. Рисункам не вредит (бумага связана
+     с краями листа и остаётся фоном), а фото перестают дырявиться. */
+  const bgFlood = borderBackground(rgb, w, h);
+  let notBg = 0;
+  for (let i=0;i<w*h;i++) if (!bgFlood[i]) notBg++;
+  const floodOk = notBg > w*h*0.01 && notBg < w*h*0.85;   // пёстрый фон — не верим
+  let changed = 0;
+  if (floodOk){
+    for (let i=0;i<w*h;i++){
+      if (!bgFlood[i] && !mask[i]){ mask[i] = 1; changed++; }          // тело объекта
+      else if (bgFlood[i] && mask[i] && score[i] < thr*1.8){ mask[i] = 0; changed++; }  // лохмотья фона
+    }
+  }
+  let objs2 = objs, lab2 = lab;
+  if (changed > 200){
+    const r = rankObjects(mask, w, h);
+    objs2 = r.objs; lab2 = r.lab;
+    if (!objs2.length) return {ok:false, reason:'На снимке ничего не нашлось'};
+  }
+  const sprites = objs2.slice(0, 8).map(o => makeSprite(rgb, mask, lab2, o, w, h));
+  return {ok:true, sheet, mask, rgb, w, h, sprites, foundPaper: !!paper};
+}
+
+
+/* =====================================================================
+   ЧАСТЬ 2. МИРЫ
+   Canvas 2D: работает и на старых телевизорах, где WebGL может не завестись.
+   Земля — плоскость в перспективе: у персонажа есть глубина t (0 — у
+   горизонта, 1 — у зрителя), и он ходит по всему полю, а не по полоске.
+   Мир — это данные, а не код: палитра, холмы, декор и способ движения.
+   Добавить тему = дописать объект в WORLDS.
+   ===================================================================== */
+
+const WORLDS = {
+  night: {
+    label:'Планета · ночь', horizon:1/3, motion:'hop', bg:'/bg/night.jpg',
+    sky:['#120a29','#2a1152','#6b3277'], stars:150,
+    lights:[{x:.79,y:.30,r:.055,c:'#ffe9a8',a:.95},
+            {x:.19,y:.20,r:.030,c:'#b8c6ff',a:.7}],
+    hills:[{amp:.020,base:.86,col:'#241546'},{amp:.030,base:.94,col:'#331b5c'}],
+    ground:['#4a2168','#5d3480','#7c4a99'], haze:'140,90,170',
+    decor:'craters', decorCol:'#3d1c5c', shadow:'#2a0f42', tag:'#ffe9a8', dust:'#d9b8f0',
+    fg:'rocks', fgCol:'#160b28', fgCol2:'#241040', props:'rocks', amb:'fireflies',
+    propCol:'#41305f', propCol2:'#8d76b5', rim:'#cfe0ff'
+  },
+  farm: {
+    label:'Ферма', horizon:1/3, motion:'hop', bg:'/bg/farm.jpg',
+    sky:['#5fb8ea','#9fd8f2','#dff0f8'], stars:0,
+    lights:[{x:.20,y:.22,r:.052,c:'#fff6c8',a:1}],
+    hills:[{amp:.022,base:.88,col:'#3f7d33'},{amp:.030,base:.96,col:'#356b2b'}],
+    ground:['#4f9c3c','#6bbf4a','#93d96e'], haze:'190,230,180',
+    decor:'bushes', decorCol:'#3d7a30', shadow:'#2f5c26', tag:'#17400f', dust:'#e6ffd9',
+    fg:'grass', fgCol:'#173d10', fgCol2:'#225418', props:'farm', amb:'butterflies', rim:'#fff3c8'
+  },
+  sky: {
+    label:'Небо', horizon:0.88, motion:'fly', bg:'/bg/sky.jpg',
+    bgHorizon:0.88, flyBand:[0.10, 0.78],   // горизонт низкий — неба много, летаем шире
+    sky:['#2f96dc','#7cc6ee','#cfe9f7'], stars:0,
+    lights:[{x:.80,y:.15,r:.050,c:'#fff6d0',a:.9}],
+    hills:[{amp:.006,base:.985,col:'#9dc4de'}],
+    ground:['#b6d8ec','#cde7f4','#e6f4fb'], haze:'225,242,252',
+    decor:'clouds', decorCol:'#ffffff', shadow:'#3a6a90',
+    tag:'#0d3c5c', dust:'#ffffff', fg:'cloud', fgCol:'#ffffff', fgCol2:'#dceefb', amb:'birds', rim:'#ffffff'
+  },
+  track: {
+    label:'Автодром', horizon:1/3, motion:'drive', bg:'/bg/track.jpg',
+    sky:['#5c9fd0','#9cc8e4','#dbeaf2'], stars:0,
+    lights:[{x:.72,y:.20,r:.048,c:'#fff8dd',a:.95}],
+    hills:[{amp:.016,base:.90,col:'#5d6b52'},{amp:.026,base:.97,col:'#4c5a44'}],
+    ground:['#3c3c44','#54545e','#6e6e7a'], haze:'170,180,195',
+    decor:'lanes', decorCol:'#c9c9d4', shadow:'#1c1c22', tag:'#ffe9a8', dust:'#e8e8f0',
+    fg:'kerb', fgCol:'#c4353f', fgCol2:'#e9e9ef', props:'tires', amb:'dust', rim:'#eef2f8'
+  }
+};
+
+let WORLD_ID = 'night';
+let customBg = null;                 // <img> пользователя, если загрузил свой фон
+const W = () => WORLDS[WORLD_ID];
+
+/* ---------- звук ----------
+   Всё синтезируется Web Audio на лету — ни одного аудиофайла в проекте.
+   Браузер разрешает звук только после жеста пользователя, поэтому контекст
+   просыпается при первом тапе. Фон: сверчки ночью, птицы на лугу, ветер в небе. */
+const SFX = (()=>{
+  let ac = null, master = null, on = true, nextAmb = 0, lastLand = 0, noiseBuf = null;
+  function ensure(){
+    if (ac) return true;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return false;
+    ac = new AC();
+    master = ac.createGain(); master.gain.value = 0.9; master.connect(ac.destination);
+    return true;
+  }
+  function unlock(){
+    if (!ensure()) return;
+    if (ac.state !== 'running') ac.resume().then(()=> document.body.classList.remove('mute'))
+                                          .catch(()=>{});
+    else document.body.classList.remove('mute');
+  }
+  function tone(type, f0, f1, dur, peak, delay=0){
+    if (!on || !ac) return;
+    const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + delay;
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t+dur);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t+dur+0.05);
+  }
+  function noise(dur, peak, f0, f1, delay=0){
+    if (!on || !ac) return;
+    if (!noiseBuf){
+      noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+    }
+    const src = ac.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.2;
+    const g = ac.createGain(), t = ac.currentTime + delay;
+    bp.frequency.setValueAtTime(f0, t);
+    bp.frequency.exponentialRampToValueAtTime(f1, t+dur);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t+0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    src.connect(bp); bp.connect(g); g.connect(master);
+    src.start(t); src.stop(t+dur+0.1);
+  }
+  /* --- фоновая музыка: генеративный эмбиент ---
+     Никаких файлов и зацикленных треков: каждые несколько секунд планируется
+     «такт» — мягкий аккорд-подушка из прогрессии мира плюс пара случайных нот
+     его лада. Гармония задана, мелодия всякий раз немного другая. */
+  let musOn = true, musGain = null, musBus = null, nextBar = 0, chordI = 0, curWorld = null;
+  const MUSDEF = {
+    // Миры должны РАЗЛИЧАТЬСЯ на слух с первых секунд:
+    // разные октавы, темп, плотность мелодии и тембр — не только тональность.
+    night:{root:110.00, prog:[[0,3,7],[-4,0,5],[-2,3,7],[-4,0,3]],       // A2, глубокий минор
+           scale:[12,15,19,22,24,27], bar:9.0, wave:'sine',     vol:0.154, mel:0.45, oct:4},
+    day:  {root:196.00, prog:[[0,4,7],[-3,2,7],[0,5,9],[-1,4,7]],        // G3, тёплый мажор
+           scale:[0,2,4,7,9,12,14],  bar:6.0, wave:'triangle', vol:0.126, mel:0.7,  oct:2},
+    farm: {root:293.66, prog:[[0,4,7],[5,9,12],[-3,2,5],[0,4,9]],        // D4, живой наигрыш
+           scale:[0,2,4,7,9,12],     bar:4.2, wave:'triangle', vol:0.112, mel:1.0,  oct:1},
+    track:{root:98.00,  prog:[[0,4,7],[-2,2,7],[3,7,10],[-2,3,7]],       // G2, гул с пульсом
+           scale:[0,2,4,7,10,12],    bar:4.0, wave:'sawtooth', vol:0.084, mel:0.5,  oct:2, pulse:true},
+    sky:  {root:329.63, prog:[[0,4,7],[2,7,11],[0,5,9],[-1,4,7]],        // E4, воздух и высота
+           scale:[7,9,12,14,16,19],  bar:10.0, wave:'sine',    vol:0.112, mel:0.35, oct:2},
+  };
+  function musEnsure(){
+    if (!ac) return;
+    if (!musGain){ musGain = ac.createGain(); musGain.gain.value = 1; musGain.connect(master); }
+    if (!musBus){ musBus = ac.createGain(); musBus.gain.value = 1; musBus.connect(musGain); }
+  }
+  function padVoice(freq, t, dur, def){
+    for (const det of [-2.5, 2.5]){
+      const o = ac.createOscillator(), g = ac.createGain(), f = ac.createBiquadFilter();
+      o.type = def.wave; o.frequency.value = freq; o.detune.value = det;
+      f.type = 'lowpass'; f.frequency.value = def.wave === 'sawtooth' ? 700 : 1600; f.Q.value = 0.4;
+      // Такты должны сшиваться внахлёст: короткое нарастание, долгая полка
+      // и хвост ЗА пределы такта. Иначе на стыке слышен провал в тишину —
+      // будто музыка стартует и сразу затухает.
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(def.vol, t + dur*0.15);
+      g.gain.setValueAtTime(def.vol, t + dur*0.80);
+      g.gain.linearRampToValueAtTime(0, t + dur*1.28);
+      o.connect(f); f.connect(g); g.connect(musBus);
+      o.start(t); o.stop(t + dur*1.33);
+    }
+  }
+  function melNote(freq, t, vol){
+    for (const [dt, v] of [[0, vol], [0.28, vol*0.45], [0.56, vol*0.2]]){  // нота + эхо
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0, t+dt);
+      g.gain.linearRampToValueAtTime(v, t+dt+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+dt+1.4);
+      o.connect(g); g.connect(musBus);
+      o.start(t+dt); o.stop(t+dt+1.5);
+    }
+  }
+  function killBus(fast){
+    if (!ac || !musBus) return;
+    const b = musBus, t = ac.currentTime, dur = fast ? 0.25 : 0.7;
+    b.gain.cancelScheduledValues(t);
+    b.gain.setValueAtTime(b.gain.value, t);
+    b.gain.linearRampToValueAtTime(0, t + dur);
+    setTimeout(()=>{ try{ b.disconnect(); }catch(e){} }, (dur + 0.3) * 1000);
+    musBus = null; nextBar = 0;
+  }
+  function musTick(){
+    if (!musOn || !ac || ac.state !== 'running') return;
+    musEnsure();
+    const def = MUSDEF[WORLD_ID] || MUSDEF.night;
+    const t = ac.currentTime;
+    if (t < nextBar - 1.2) return;      // планируем заранее — нужен нахлёст
+    const start = Math.max(nextBar, t + 0.06);
+    const chord = def.prog[chordI % def.prog.length]; chordI++;
+    for (const st of chord) padVoice(def.root * Math.pow(2, st/12), start, def.bar, def);
+    let mt = start + 0.5 + Math.random()*1.5;
+    while (mt < start + def.bar - 1){
+      if (Math.random() < def.mel){
+        const st = def.scale[(Math.random()*def.scale.length)|0];
+        melNote(def.root * def.oct * Math.pow(2, st/12), mt, 0.05);
+      }
+      mt += (def.bar > 8 ? 2.6 : def.bar < 5 ? 0.9 : 1.6) + Math.random()*2.0;
+    }
+    if (def.pulse)                       // еле слышный пульс на автодроме
+      for (let b=0; b<def.bar; b+=0.5)
+        tone('sine', 95, 55, 0.10, 0.065, (start - ac.currentTime) + b);
+    nextBar = start + def.bar;
+  }
+
+  return {
+    unlock,
+    _dbg(){ return {state: ac ? ac.state : 'нет контекста', on, musOn, nextBar, bus: !!musBus}; },
+    _probe(ms=6000){                       // замер реального уровня на выходе
+      if (!ac) return Promise.resolve('нет контекста');
+      const an = ac.createAnalyser(); an.fftSize = 2048;
+      master.connect(an);
+      const buf = new Float32Array(an.fftSize);
+      let peak = 0, sum = 0, n = 0;
+      return new Promise(done => {
+        const id = setInterval(()=>{
+          an.getFloatTimeDomainData(buf);
+          let s = 0; for (let i=0;i<buf.length;i++){ const v = Math.abs(buf[i]); s += v*v; if (v>peak) peak = v; }
+          sum += Math.sqrt(s/buf.length); n++;
+        }, 50);
+        setTimeout(()=>{ clearInterval(id); try{ master.disconnect(an); }catch(e){}
+          done({peak: +peak.toFixed(4), rms: +(sum/Math.max(1,n)).toFixed(5)}); }, ms);
+      });
+    },
+    toggle(){ on = !on; unlock(); return on; },
+    musicToggle(){
+      musOn = !musOn; unlock();
+      if (!musOn) killBus();
+      return musOn;
+    },
+    portal(){ noise(0.5, 0.10, 250, 2400); tone('triangle', 660, 1320, 0.4, 0.05, 0.1); },
+    land(p){
+      const t = performance.now();
+      if (t - lastLand < 90) return;           // толпа не должна барабанить
+      lastLand = t;
+      tone('sine', 150, 55, 0.13, 0.10*Math.min(1, p+0.3));
+    },
+    greet(){ tone('triangle', 740, 740, 0.08, 0.06); tone('triangle', 1100, 1100, 0.1, 0.06, 0.09); },
+    sneeze(){ noise(0.07, 0.08, 1200, 500); tone('square', 900, 380, 0.1, 0.035, 0.02); },
+    world(id){
+      nextAmb = 0;
+      if (id === curWorld) return;      // тот же мир — музыку не трогаем
+      curWorld = id; chordI = 0; killBus(true);
+    },
+    tick(nowMs){
+      // Браузер молчит до первого жеста пользователя. Экран мира открывается
+      // по ссылке и живёт сам — никто не кликает, и звука «нет». Подсказываем один раз.
+      if (on && (!ac || ac.state !== 'running') && !SFX._hinted && nowMs > 4000 && !IS_PHONE){
+        SFX._hinted = true;
+        toast('Нажми в любом месте экрана — включится звук', 5000);
+      }
+      if (!on){ killBus(true); return; }     // «звук выключен» — значит и музыка тоже
+      musTick();
+      if (!ac || ac.state !== 'running' || nowMs < nextAmb) return;
+      const a = W().amb;
+      if (a === 'fireflies'){                  // сверчки
+        for (let i=0;i<3;i++) tone('square', 4300, 4300, 0.018, 0.012, i*0.045);
+        nextAmb = nowMs + 700 + Math.random()*2200;
+      } else if (a === 'butterflies'){         // птицы на лугу
+        const f = 1900 + Math.random()*700;
+        tone('sine', f, f*1.35, 0.14, 0.02);
+        tone('sine', f*1.2, f*0.9, 0.12, 0.02, 0.18);
+        nextAmb = nowMs + 3500 + Math.random()*6000;
+      } else if (a === 'birds'){               // ветер в небе
+        noise(2.2, 0.015, 300, 700);
+        nextAmb = nowMs + 6000 + Math.random()*7000;
+      } else nextAmb = nowMs + 5000;
+    },
+  };
+})();
+/* Звук живёт на своём таймере, а не на кадрах отрисовки: requestAnimationFrame
+   встаёт, когда окно не в фокусе или свёрнуто, — музыка не должна от этого молчать. */
+if (!/\/add\/?$/.test(location.pathname))     // на телефоне-камере музыка не нужна
+  setInterval(()=> SFX.tick(performance.now()), 250);
+
+
+/* Любое действие пользователя разблокирует аудио: браузеры не дают
+   автовоспроизведение без жеста. Ловим всё, чем можно ткнуть, включая пульт. */
+['pointerdown','touchstart','keydown','click'].forEach(ev =>
+  addEventListener(ev, ()=> SFX.unlock(), {passive:true}));
+
+// вкладку вернули из фона — контекст мог уснуть, будим
+addEventListener('visibilitychange', ()=>{ if (!document.hidden) SFX.unlock(); });
+
+/* «Дыхание камеры»: медленный дрейф в пару процентов ширины. Сам по себе
+   незаметен, но каждый слой сдвигается пропорционально глубине — и сцена
+   перестаёт быть плоской картинкой. */
+let cam = 0;
+const camShift = depth => cam * (0.15 + 1.05*depth);
+
+const cv = document.getElementById('world');
+const ctx = cv.getContext('2d');
+let VW = 0, VH = 0, DPR = 1, HZ = 0;
+
+function resize(){
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  VW = cv.clientWidth; VH = cv.clientHeight;
+  cv.width = Math.round(VW*DPR); cv.height = Math.round(VH*DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  HZ = VH * W().horizon;
+  makeStars();
+  buildForeground();          // размеры экрана изменились — пересобрать
+}
+addEventListener('resize', resize);
+
+/* ---------- проекция плоскости ---------- */
+const T_MIN = 0.10;
+// 0.14 — отступ от горизонта: даже самый дальний персонаж целиком под линией
+const groundY = t => HZ + (VH*1.02 - HZ) * (0.14 + 0.86*Math.pow(t, 1.7));
+const depthK  = t => 0.20 + 0.80*Math.pow(t, 1.25);
+const screenX = (u,t) => VW*0.5 + u * VW * (0.09 + 0.60*t);
+const maxU   = t => Math.min(1.05, 0.46 / (0.09 + 0.60*t));   // чтобы не улетал за экран
+
+/* ---------- небо ---------- */
+let stars = [];
+function makeStars(){
+  stars = [];
+  const n = W().stars|0;
+  for (let i=0;i<n;i++) stars.push({
+    x: Math.random()*VW, y: Math.random()*HZ*0.95,
+    r: Math.random()*1.5+0.4, tw: Math.random()*6.283
+  });
+}
+
+/* ---------- растровые фоны ----------
+   Картинка рисуется НЕ просто «по накрытию»: она сдвигается так, чтобы её
+   линия горизонта легла ровно на HZ. Иначе на экране другого соотношения
+   сторон горизонт уедет, и персонажи будут ходить по небу. */
+const BG_HORIZON = 1/3;          // где горизонт на картинке, если мир не сказал иначе
+const bgCache = {};              // path -> Image | 'fail'
+
+/* Генератор картинок никогда не ставит горизонт ровно туда, куда просили:
+   выходит 0.37 вместо 0.33, и персонажи повисают над землёй. Поэтому не верим
+   заявленному числу, а находим горизонт сами — это самый сильный горизонтальный
+   перепад цвета по всей ширине кадра. Заодно работает и для чужих картинок,
+   которые пользователь поставит своим фоном. */
+function detectHorizon(img){
+  const CW = 64, CH = 200;
+  const c = document.createElement('canvas'); c.width = CW; c.height = CH;
+  const x = c.getContext('2d', {willReadFrequently:true});
+  try { x.drawImage(img, 0, 0, CW, CH); } catch(e){ return null; }
+  let d;
+  try { d = x.getImageData(0, 0, CW, CH).data; } catch(e){ return null; }
+
+  // средний цвет строки и её «пестрота» по горизонтали
+  const row = new Float32Array(CH*3), rowVar = new Float32Array(CH);
+  for (let y=0;y<CH;y++){
+    let r=0,g=0,b=0, s=0, s2=0;
+    for (let px=0;px<CW;px++){
+      const i=(y*CW+px)*4;
+      r+=d[i]; g+=d[i+1]; b+=d[i+2];
+      const L = d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114;
+      s += L; s2 += L*L;
+    }
+    row[y*3]=r/CW; row[y*3+1]=g/CW; row[y*3+2]=b/CW;
+    rowVar[y] = Math.sqrt(Math.max(0, s2/CW - (s/CW)*(s/CW)));
+  }
+
+  const K = 6;
+  const step = new Float32Array(CH), tex = new Float32Array(CH);
+  const y0 = Math.round(CH*0.12), y1 = Math.round(CH*0.90);
+  for (let y=y0; y<y1; y++){
+    let diff = 0, vUp = 0, vDn = 0;
+    for (let ch=0; ch<3; ch++){
+      let up=0, dn=0;
+      for (let i=1;i<=K;i++){ up += row[(y-i)*3+ch]; dn += row[(y+i)*3+ch]; }
+      diff += Math.abs(dn/K - up/K);
+    }
+    for (let i=1;i<=K;i++){ vUp += rowVar[y-i]; vDn += rowVar[y+i]; }
+    step[y] = diff;
+    tex[y]  = Math.abs(vDn/K - vUp/K);          // небо гладкое, земля фактурная
+  }
+
+  /* Плавный градиент неба даёт такой же «перепад», как настоящий стык, поэтому
+     сравниваем каждую строку с её окрестностью: у ровного градиента перепад
+     везде одинаковый и разница схлопывается, а у стыка — торчит. */
+  const R = 14;
+  const relief = sig => {
+    const out = new Float32Array(CH);
+    for (let y=y0; y<y1; y++){
+      let s = 0, n = 0;
+      for (let i=-R; i<=R; i++){
+        if (Math.abs(i) <= 2) continue;
+        const j = y+i;
+        if (j < y0 || j >= y1) continue;
+        s += sig[j]; n++;
+      }
+      out[y] = n ? Math.max(0, sig[y] - s/n) : 0;
+    }
+    return out;
+  };
+  const rStep = relief(step), rTex = relief(tex);
+
+  const norm = a => { let m = 0; for (let y=y0;y<y1;y++) m = Math.max(m, a[y]); return m || 1; };
+  const nS = norm(rStep), nT = norm(rTex);
+
+  let best = -1, bestY = -1;
+  for (let y=y0; y<y1; y++){
+    const v = rStep[y]/nS + rTex[y]/nT;
+    if (v > best){ best = v; bestY = y; }
+  }
+  // ни перепада цвета, ни смены фактуры — пусть решает конфиг мира
+  if (bestY < 0 || (rStep[bestY] < 4 && rTex[bestY] < 1.5)) return null;
+  return bestY / CH;
+}
+
+const bgReady = [];          // кому сообщить, что фон домчался (карточки миров)
+function bgFor(id){
+  const path = WORLDS[id] && WORLDS[id].bg;
+  if (!path) return null;
+  const c = bgCache[path];
+  if (c === undefined){
+    const img = new Image();
+    bgCache[path] = img;
+    img.onload = ()=>{ img.__hz = detectHorizon(img); img.__ok = true; bgReady.forEach(f => f()); };
+    img.onerror = ()=>{ bgCache[path] = 'fail'; };   // нет файла — рисуем градиентом
+    img.src = path;
+    return null;
+  }
+  return (c !== 'fail' && c.__ok) ? c : null;
+}
+
+/* Найденному горизонту доверяем только рядом с тем, что заявил мир.
+   Генератор промахивается на несколько процентов — это чиним автоматически.
+   А если детектор ошибся грубо, лучше взять число из конфига, чем увезти
+   весь фон и подвесить персонажей в воздухе. */
+const HZ_TOLERANCE = 0.15;
+function bgHorizonOf(img){
+  const want = (img === customBg) ? BG_HORIZON : (W().bgHorizon || BG_HORIZON);
+  const got = img.__hz;
+  if (got == null) return want;
+  if (img === customBg) return got;               // чужой картинке ожидания не навязываем
+  return Math.abs(got - want) <= HZ_TOLERANCE ? got : want;
+}
+
+function drawBgImage(img){
+  // 1.04 — запас по краям, чтобы дрейф камеры не оголял кромку картинки
+  const s = Math.max(VW/img.width, VH/img.height) * 1.04;
+  const dw = img.width*s, dh = img.height*s;
+  const dx = (VW-dw)/2 + camShift(0.15);
+  let dy = HZ - bgHorizonOf(img)*dh;                  // совмещаем горизонты
+  dy = Math.min(0, Math.max(VH-dh, dy));              // не оголяем края
+  ctx.drawImage(img, dx, dy, dw, dh);
+}
+
+function drawSky(now){
+  const w = W();
+  const img = customBg || bgFor(WORLD_ID);
+  if (img){ drawBgImage(img); return; }
+  const g = ctx.createLinearGradient(0,0,0,HZ);
+  g.addColorStop(0, w.sky[0]); g.addColorStop(.65, w.sky[1]); g.addColorStop(1, w.sky[2]);
+  ctx.fillStyle = g; ctx.fillRect(0,0,VW,HZ+2);
+
+  for (const s of stars){
+    ctx.globalAlpha = 0.3 + 0.45*Math.abs(Math.sin(now*0.001 + s.tw));
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.283); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  for (const l of w.lights)
+    glow(VW*l.x, HZ*l.y*2.2, Math.min(VW,VH)*l.r, l.c, l.a);
+
+  for (const h of w.hills){
+    ctx.fillStyle = h.col;
+    ctx.beginPath(); ctx.moveTo(0, HZ+2);
+    for (let x=0; x<=VW; x+=16){
+      const y = HZ*h.base + Math.sin(x*0.005)*HZ*h.amp + Math.sin(x*0.013)*HZ*h.amp*0.4;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(VW, HZ+2); ctx.closePath(); ctx.fill();
+  }
+}
+function glow(x,y,r,col,a){
+  const g = ctx.createRadialGradient(x,y,r*0.2,x,y,r*2.6);
+  g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.globalAlpha = a*0.3; ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x,y,r*2.6,0,6.283); ctx.fill();
+  ctx.globalAlpha = a; ctx.fillStyle = col;
+  ctx.beginPath(); ctx.arc(x,y,r,0,6.283); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+/* ---------- земля ---------- */
+function drawGround(){
+  if (customBg || bgFor(WORLD_ID)){   // на картинке земля уже нарисована
+    // лёгкая подложка под кнопки; сильнее нельзя — на светлых фонах
+    // (небо, ферма) получается грязная чёрная полоса
+    const v = ctx.createLinearGradient(0, VH*0.86, 0, VH);
+    v.addColorStop(0,'rgba(0,0,0,0)'); v.addColorStop(1,'rgba(0,0,0,.18)');
+    ctx.fillStyle = v; ctx.fillRect(0, VH*0.86, VW, VH*0.14);
+    return;
+  }
+  const w = W();
+  const g = ctx.createLinearGradient(0,HZ,0,VH);
+  g.addColorStop(0, w.ground[0]); g.addColorStop(.35, w.ground[1]); g.addColorStop(1, w.ground[2]);
+  ctx.fillStyle = g; ctx.fillRect(0,HZ,VW,VH-HZ);
+
+  const h = ctx.createLinearGradient(0,HZ,0,HZ+(VH-HZ)*0.34);
+  h.addColorStop(0,`rgba(${w.haze},.55)`); h.addColorStop(1,`rgba(${w.haze},0)`);
+  ctx.fillStyle = h; ctx.fillRect(0,HZ,VW,(VH-HZ)*0.34);
+
+  if (w.decor === 'lanes') drawLanes(w);
+}
+
+/* разметка автодрома: полосы сходятся к горизонту — сразу читается глубина */
+function drawLanes(w){
+  ctx.strokeStyle = w.decorCol; ctx.globalAlpha = .5; ctx.lineWidth = 2;
+  for (const u of [-1.1,-0.55,0,0.55,1.1]){
+    ctx.beginPath();
+    for (let t=T_MIN; t<=1.001; t+=0.02) ctx.lineTo(screenX(u,t), groundY(t));
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = w.decorCol;
+  for (let t=T_MIN; t<=1; t+=0.075){
+    const k = depthK(t), y = groundY(t);
+    ctx.globalAlpha = .55*(0.35+0.65*t);
+    ctx.fillRect(screenX(0,t)-VW*0.006*k, y, VW*0.012*k, VH*0.014*k);
+  }
+  ctx.globalAlpha = 1;
+}
+
+const decor = [];
+function makeDecor(){
+  decor.length = 0;
+  const d = W().decor;
+  if (customBg || d === 'lanes' || d === 'none') return;
+  const clouds = d === 'clouds';
+  for (let i=0;i<(clouds?14:26);i++) decor.push({
+    u:(Math.random()*2-1)*1.15, t:T_MIN+Math.random()*(1-T_MIN),
+    r:(clouds?0.05:0.02)+Math.random()*(clouds?0.09:0.05),
+    fy:0.08+Math.random()*0.66, drift:(Math.random()<.5?-1:1)*(0.01+Math.random()*0.03),
+    isDecor:true, seed:Math.random()
+  });
+}
+function drawDecor(d){
+  const w = W(), k = depthK(d.t);
+  if (w.decor === 'clouds'){
+    const cx = screenX(d.u, d.t) + camShift(d.t), cy = VH*d.fy, r = d.r*VW*k;
+    ctx.globalAlpha = 0.55*(0.35+0.65*d.t);
+    ctx.fillStyle = w.decorCol;
+    ctx.beginPath();
+    ctx.ellipse(cx-r*0.5, cy, r*0.62, r*0.34, 0, 0, 6.283);
+    ctx.ellipse(cx+r*0.45, cy+r*0.05, r*0.55, r*0.30, 0, 0, 6.283);
+    ctx.ellipse(cx, cy-r*0.22, r*0.70, r*0.40, 0, 0, 6.283);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    return;
+  }
+  const x = screenX(d.u, d.t) + camShift(d.t), y = groundY(d.t);
+  ctx.globalAlpha = 0.30*(0.4+0.6*d.t);
+  ctx.fillStyle = w.decorCol;
+  if (w.decor === 'bushes'){
+    const r = d.r*VW*k*0.7;
+    ctx.beginPath();
+    ctx.arc(x-r*0.6, y-r*0.4, r*0.7, 0, 6.283);
+    ctx.arc(x+r*0.5, y-r*0.35, r*0.6, 0, 6.283);
+    ctx.arc(x, y-r*0.8, r*0.8, 0, 6.283);
+    ctx.fill();
+  } else {
+    const rx = d.r*VW*k*1.6;
+    ctx.beginPath(); ctx.ellipse(x, y, rx, rx*0.32, 0, 0, 6.283); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ---------- передний план ----------
+   Крупные силуэты в нижних углах, нарисованные ПОВЕРХ персонажей: монстр
+   проходит за кустом — и плоская сцена мгновенно становится объёмной.
+   Центр всегда пуст. Пререндер в offscreen-канвас, в кадре — один drawImage. */
+let fgCanvas = null;
+
+function buildForeground(){
+  fgCanvas = null;
+  const style = W().fg;
+  if (!style || customBg) return;
+  const FW = Math.round(VW*1.12), FH = Math.round(VH);
+  if (FW < 50 || FH < 50) return;
+  const c = document.createElement('canvas'); c.width = FW; c.height = FH;
+  const x = c.getContext('2d');
+  const c1 = W().fgCol, c2 = W().fgCol2;
+  const R = (a,b)=> a + Math.random()*(b-a);
+
+  const blob = (cx, cy, rx, ry, col, alpha=1)=>{
+    x.globalAlpha = alpha; x.fillStyle = col;
+    x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, 0, 6.283); x.fill();
+    x.globalAlpha = 1;
+  };
+
+  if (style === 'rocks'){
+    blob(FW*0.03, FH*1.04, VW*0.20, FH*0.20, c1);
+    blob(FW*0.14, FH*1.06, VW*0.10, FH*0.10, c2);
+    blob(FW*0.97, FH*1.05, VW*0.24, FH*0.24, c1);
+    blob(FW*0.86, FH*1.07, VW*0.09, FH*0.09, c2);
+  }
+  if (style === 'grass'){
+    const tuft = (bx, n, h)=>{
+      for (let i=0;i<n;i++){
+        const gx = bx + R(-VW*0.10, VW*0.10);
+        const gh = h * R(0.55, 1.25), gw = VW*R(0.006, 0.013);
+        x.fillStyle = Math.random()<0.5 ? c1 : c2;
+        x.beginPath();
+        x.moveTo(gx - gw, FH+2);
+        x.quadraticCurveTo(gx + R(-gw,gw)*3, FH - gh, gx + gw*0.2, FH - gh);
+        x.lineTo(gx + gw, FH+2);
+        x.closePath(); x.fill();
+      }
+    };
+    tuft(FW*0.06, 26, FH*0.17);
+    tuft(FW*0.95, 30, FH*0.20);
+    tuft(FW*0.18, 12, FH*0.09);
+  }
+  if (style === 'kerb'){
+    // полосатые поребрики трассы в нижних углах
+    const kerb = (x0, w, lean)=>{
+      const hK = FH*0.085, seg = VW*0.045;
+      for (let i=0; i*seg < w; i++){
+        x.fillStyle = i%2 ? c2 : c1;
+        const sx = x0 + i*seg*lean;
+        x.beginPath();
+        x.moveTo(sx, FH); x.lineTo(sx+seg*lean, FH);
+        x.lineTo(sx+seg*lean + hK*0.35*lean, FH-hK);
+        x.lineTo(sx + hK*0.35*lean, FH-hK);
+        x.closePath(); x.fill();
+      }
+    };
+    kerb(-VW*0.01, VW*0.30, 1);
+    kerb(FW+VW*0.01, VW*0.30, -1);
+  }
+  if (style === 'cloud'){
+    const puff = (cx, cy, r)=>{
+      blob(cx-r*0.7, cy+r*0.15, r*0.75, r*0.5, c2, 0.9);
+      blob(cx+r*0.6, cy+r*0.2, r*0.65, r*0.45, c2, 0.9);
+      blob(cx, cy-r*0.15, r*0.9, r*0.6, c1, 0.95);
+    };
+    puff(FW*0.04, FH*1.02, VW*0.16);
+    puff(FW*0.96, FH*1.04, VW*0.19);
+  }
+  fgCanvas = c;
+}
+
+function drawForeground(){
+  if (!fgCanvas) return;
+  ctx.drawImage(fgCanvas, (VW - fgCanvas.width)/2 + camShift(1.25), 0);
+}
+
+/* ---------- реквизит на площадке ----------
+   Камни, цветы, стог, покрышки прямо в рабочей зоне. У каждого своя глубина t,
+   поэтому монстры проходят то ПЕРЕД ними, то ЗА ними — это и продаёт объём. */
+let props = [];
+
+function makeProps(){
+  props = [];
+  const imgs = (typeof propSet === 'function') ? propSet(WORLD_ID) : null;
+  if (imgs && imgs.length){
+    const n = WORLD_ID === 'night' ? 7 : 8;
+    for (let i=0;i<n;i++){
+      const t = T_MIN + 0.10 + Math.random()*0.85;
+      props.push({isProp:true, kind:'png', img: imgs[i % imgs.length], t,
+        u:(Math.random()*2-1)*maxU(t)*0.92, seed:Math.random()});
+    }
+    return;
+  }
+  const style = W().props;
+  if (!style) return;
+  const put = (kind, n, tMin=T_MIN+0.10, tMax=0.95)=>{
+    for (let i=0;i<n;i++){
+      const t = tMin + Math.random()*(tMax-tMin);
+      props.push({isProp:true, kind, t,
+        u:(Math.random()*2-1)*maxU(t)*0.92, seed:Math.random()});
+    }
+  };
+  if (style === 'rocks') put('rock', 7);
+  if (style === 'farm'){ put('flower', 9); put('hay', 1, 0.35, 0.55); }
+  if (style === 'tires') put('tire', 6);
+}
+
+function drawProp(p, now){
+  const k = depthK(p.t);
+  const x = screenX(p.u, p.t) + camShift(p.t);
+  const y = groundY(p.t);
+  ctx.save();
+  ctx.globalAlpha = 0.75 + 0.25*p.t;
+  if (p.kind === 'png'){
+    const im = p.img;
+    if (im.complete && im.naturalWidth){
+      const h = VH*0.16*k*(0.75+p.seed*0.5), w = h*im.naturalWidth/im.naturalHeight;
+      ctx.fillStyle = 'rgba(0,0,0,.22)';
+      ctx.beginPath(); ctx.ellipse(x, y, w*0.45, h*0.08, 0, 0, 6.283); ctx.fill();
+      ctx.drawImage(im, x - w/2, y - h, w, h);
+    }
+    ctx.restore(); return;
+  }
+  if (p.kind === 'rock'){
+    const r = VW*0.030*k*(0.7+p.seed*0.8);
+    // мягкая тень, тело камня и СВЕТЛЫЙ блик сверху — иначе выходит «дыра»
+    ctx.fillStyle = 'rgba(0,0,0,.22)';
+    ctx.beginPath(); ctx.ellipse(x, y, r*1.02, r*0.18, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = W().propCol;
+    ctx.beginPath(); ctx.ellipse(x, y-r*0.35, r, r*0.6, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = W().propCol2;
+    ctx.beginPath(); ctx.ellipse(x-r*0.22, y-r*0.55, r*0.5, r*0.28, -0.3, 0, 6.283); ctx.fill();
+  }
+  if (p.kind === 'flower'){
+    const h = VH*0.055*k*(0.8+p.seed*0.5), r = h*0.28;
+    const sway = Math.sin(now*0.0016 + p.seed*9)*h*0.07;
+    ctx.strokeStyle = '#2e6b22'; ctx.lineWidth = Math.max(1, h*0.07);
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x, y-h*0.6, x+sway, y-h); ctx.stroke();
+    ctx.fillStyle = `hsl(${(p.seed*360)|0},70%,62%)`;
+    for (let i=0;i<5;i++){
+      const a = i/5*6.283 + p.seed;
+      ctx.beginPath();
+      ctx.ellipse(x+sway+Math.cos(a)*r, y-h+Math.sin(a)*r, r*0.62, r*0.62, 0, 0, 6.283);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#ffdf6b';
+    ctx.beginPath(); ctx.arc(x+sway, y-h, r*0.45, 0, 6.283); ctx.fill();
+  }
+  if (p.kind === 'hay'){
+    const r = VH*0.14*k;
+    ctx.fillStyle = 'rgba(60,40,10,.28)';
+    ctx.beginPath(); ctx.ellipse(x, y, r*1.0, r*0.17, 0, 0, 6.283); ctx.fill();
+    // классический стог: широкий низ, купол и шапка
+    ctx.fillStyle = '#d9a94e';
+    ctx.beginPath();
+    ctx.moveTo(x-r, y);
+    ctx.quadraticCurveTo(x-r*0.95, y-r*0.95, x, y-r*1.05);
+    ctx.quadraticCurveTo(x+r*0.95, y-r*0.95, x+r, y);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#e8c070';
+    ctx.beginPath(); ctx.ellipse(x, y-r*0.98, r*0.34, r*0.16, 0, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = '#b8862f'; ctx.lineWidth = Math.max(1, r*0.045);
+    for (let i=-2;i<=2;i++){
+      ctx.beginPath();
+      ctx.moveTo(x + i*r*0.3, y);
+      ctx.quadraticCurveTo(x + i*r*0.36, y-r*0.55, x + i*r*0.14, y-r*0.95);
+      ctx.stroke();
+    }
+  }
+  if (p.kind === 'tire'){
+    const r = VH*0.045*k*(0.8+p.seed*0.5);
+    ctx.lineWidth = r*0.55; ctx.strokeStyle = '#1d1d22';
+    ctx.beginPath(); ctx.ellipse(x, y-r*0.25, r, r*0.45, 0, 0, 6.283); ctx.stroke();
+    ctx.lineWidth = r*0.16; ctx.strokeStyle = '#3d3d46';
+    ctx.beginPath(); ctx.ellipse(x, y-r*0.25, r*0.8, r*0.34, 0, 0, 6.283); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* ---------- живность в воздухе ----------
+   Светлячки ночью, бабочки на лугу, пылинки в свете, птички вдали.
+   Плюс редкая падающая звезда — награда тому, кто досмотрел. */
+let ambient = [];
+const AMB_N = {fireflies:12, butterflies:6, dust:16, birds:7};
+
+function updateAmbient(dt, now){
+  const style = W().amb;
+  if (!style){ ambient.length = 0; return; }
+  const want = AMB_N[style] || 0;
+  while (ambient.filter(a=>a.type===style).length < want){
+    const a = {type:style, ph:Math.random()*6.283, seed:Math.random()};
+    if (style === 'birds'){
+      a.x = Math.random()*VW; a.y = VH*(0.08+Math.random()*0.5);
+      a.vx = (Math.random()<0.5?-1:1)*(12+Math.random()*20); a.vy = 0;
+    } else if (style === 'butterflies'){
+      a.x = Math.random()*VW; a.y = HZ + Math.random()*(VH-HZ)*0.8;
+      a.vx = (Math.random()*2-1)*22; a.vy = 0;
+    } else {
+      a.x = Math.random()*VW; a.y = HZ*0.4 + Math.random()*(VH-HZ*0.4);
+      a.vx = (Math.random()*2-1)*8; a.vy = (Math.random()*2-1)*5;
+    }
+    ambient.push(a);
+  }
+  for (const a of ambient){
+    a.ph += dt*(a.type==='butterflies' ? 9 : 3);
+    a.x += (a.vx||0)*dt; a.y += (a.vy||0)*dt;
+    if (a.type === 'fireflies' || a.type === 'dust'){
+      a.vx += (Math.random()*2-1)*14*dt; a.vy += (Math.random()*2-1)*10*dt;
+      a.vx = Math.max(-16, Math.min(16, a.vx));
+      a.vy = Math.max(-10, Math.min(10, a.vy));
+      if (a.y < HZ*0.5) a.vy = Math.abs(a.vy);
+      if (a.y > VH*0.96) a.vy = -Math.abs(a.vy);
+    }
+    if (a.type === 'butterflies'){
+      a.y += Math.sin(a.ph*0.55)*18*dt;
+      a.y = Math.max(HZ*0.8, Math.min(VH*0.9, a.y));
+      if (Math.random() < dt*0.25) a.vx = (Math.random()*2-1)*26;
+    }
+    if (a.x < -30) a.x = VW+28;
+    if (a.x > VW+30) a.x = -28;
+  }
+  if (style === 'fireflies' && Math.random() < dt/28)
+    ambient.push({type:'star', x:VW*(0.2+Math.random()*0.6), y:VH*0.05+Math.random()*HZ*0.4,
+                  vx:-VW*0.5, vy:VH*0.16, life:0.9, ph:0, seed:0});
+  for (let i=ambient.length-1;i>=0;i--){
+    const a = ambient[i];
+    if (a.type !== 'star') continue;
+    a.life -= dt;
+    if (a.life <= 0) ambient.splice(i,1);
+  }
+}
+
+function drawAmbient(now){
+  for (const a of ambient){
+    if (a.type === 'fireflies'){
+      const tw = 0.3 + 0.7*Math.abs(Math.sin(now*0.002 + a.ph));
+      ctx.globalAlpha = tw*0.25; ctx.fillStyle = '#d8ffa0';
+      ctx.beginPath(); ctx.arc(a.x, a.y, 6, 0, 6.283); ctx.fill();
+      ctx.globalAlpha = tw;
+      ctx.beginPath(); ctx.arc(a.x, a.y, 1.8, 0, 6.283); ctx.fill();
+    } else if (a.type === 'dust'){
+      ctx.globalAlpha = 0.12 + 0.08*Math.sin(now*0.001 + a.ph);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(a.x, a.y, 1.6, 0, 6.283); ctx.fill();
+    } else if (a.type === 'butterflies'){
+      const flap = 0.25 + 0.75*Math.abs(Math.sin(a.ph));
+      const size = 5 + a.seed*3;
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = `hsl(${(a.seed*300)|0},75%,60%)`;
+      ctx.save(); ctx.translate(a.x, a.y);
+      ctx.beginPath(); ctx.ellipse(-size*0.55, 0, size*0.55, size*0.55*flap + size*0.12, -0.4, 0, 6.283); ctx.fill();
+      ctx.beginPath(); ctx.ellipse( size*0.55, 0, size*0.55, size*0.55*flap + size*0.12,  0.4, 0, 6.283); ctx.fill();
+      ctx.restore();
+    } else if (a.type === 'birds'){
+      const flap = Math.sin(a.ph)*0.5, size = 5 + a.seed*4;
+      ctx.globalAlpha = 0.55; ctx.strokeStyle = '#26323c'; ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(a.x - size, a.y - flap*size);
+      ctx.quadraticCurveTo(a.x, a.y + size*0.4, a.x, a.y);
+      ctx.quadraticCurveTo(a.x, a.y + size*0.4, a.x + size, a.y - flap*size);
+      ctx.stroke();
+    } else if (a.type === 'star'){
+      ctx.globalAlpha = Math.max(0, a.life);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x+46, a.y-15); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ---------- персонаж ---------- */
+const MAX_MONSTERS = 60;
+const monsters = [];
+let dust = [], sparks = [], portals = [];
+
+/* ---------- запекание объёма ----------
+   Из плоского выреза делаем «фигурку» за один проход при рождении:
+     1) тёмная копия позади со сдвигом — толщина, как у печенья;
+     2) градиент свет-сверху/тень-снизу, запечённый прямо в цвета тела;
+     3) светлая кромка по краю силуэта СО СТОРОНЫ светила этого мира.
+   В кадре это по-прежнему один спрайт — старый телек разницы не заметит. */
+function bakeSprite(src){
+  const sw = src.width, sh = src.height;
+  if (!sw || !sh) return src;
+  const ex   = Math.max(2, Math.min(8, sh*0.020));   // толщина
+  const rimW = Math.max(2, Math.min(7, sh*0.018));   // ширина кромки
+  const pad  = Math.ceil(Math.max(ex, rimW) + 2);
+  const out = document.createElement('canvas');
+  out.width = sw + pad*2; out.height = sh + pad*2;
+  const o = out.getContext('2d');
+  const tmp = document.createElement('canvas');
+  tmp.width = sw; tmp.height = sh;
+  const t = tmp.getContext('2d');
+
+  // 1) толщина
+  t.drawImage(src, 0, 0);
+  t.globalCompositeOperation = 'source-atop';
+  t.fillStyle = 'rgba(24,12,34,0.85)'; t.fillRect(0, 0, sw, sh);
+  t.globalCompositeOperation = 'source-over';
+  o.drawImage(tmp, pad + ex*0.6, pad + ex);
+
+  // 2) тело с запечённой светотенью
+  t.clearRect(0, 0, sw, sh);
+  t.drawImage(src, 0, 0);
+  t.globalCompositeOperation = 'source-atop';
+  const g = t.createLinearGradient(0, 0, 0, sh);
+  g.addColorStop(0,    'rgba(255,255,255,0.18)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0)');
+  g.addColorStop(0.60, 'rgba(0,0,0,0)');
+  g.addColorStop(1,    'rgba(20,10,40,0.22)');
+  t.fillStyle = g; t.fillRect(0, 0, sw, sh);
+  t.globalCompositeOperation = 'source-over';
+  o.drawImage(tmp, pad, pad);
+
+  // 3) кромка со стороны светила
+  const l = (W().lights || [])[0];
+  const ldx = l ? (Math.sign(l.x - 0.5) || 1) : 1;
+  t.clearRect(0, 0, sw, sh);
+  t.drawImage(src, 0, 0);
+  t.globalCompositeOperation = 'source-in';
+  t.fillStyle = W().rim || '#ffffff'; t.fillRect(0, 0, sw, sh);
+  t.globalCompositeOperation = 'destination-out';
+  t.drawImage(src, -ldx*rimW, rimW*0.9);
+  t.globalCompositeOperation = 'source-over';
+  o.globalAlpha = 0.55;
+  o.drawImage(tmp, pad, pad);
+  o.globalAlpha = 1;
+  return out;
+}
+
+class Monster{
+  constructor(sprite, name){
+    this.src = sprite;                 // исходный вырез — для перепекания
+    this.spr = bakeSprite(sprite);     // фигурка под свет ТЕКУЩЕГО мира
+    this.name = (name||'').trim();
+    this.isDecor = false;
+    this.t = T_MIN + 0.12 + Math.random()*(0.88-T_MIN);
+    this.u = (Math.random()*2-1)*maxU(this.t)*0.85;
+    this.sizeVar = 0.85 + Math.random()*0.3;
+    this.z = 3.0;
+    this.vz = 0;
+    this.du = 0; this.dt = 0;
+    this.dir = Math.random()<0.5 ? -1 : 1;
+    this.face = this.dir;                        // куда смотрит СЕЙЧАС (плавно)
+    this.rest = 0;
+    this.driftT = (Math.random()<0.5?-1:1) * (0.006 + Math.random()*0.014);
+    this.sx = 1; this.sy = 1;
+    this.phase = Math.random()*6.283;
+    this.cooldown = 0.5 + Math.random()*1.8;
+    this.greetLock = 1.5;
+    this.alpha = 0;
+    this.speed = 0.10 + Math.random()*0.16;      // для режима «едет»
+    const band = (W().flyBand || [0.12,0.7]);    // для режима «летит»
+    this.fyBase = band[0] + Math.random()*(band[1]-band[0]);
+    this.fy = this.fyBase;
+    this.bob = Math.random()*6.283;
+    this.driftU = (Math.random()<0.5?-1:1) * (0.05 + Math.random()*0.11);
+    this.driftY = (Math.random()*2-1) * 0.012;
+    this.sync();
+  }
+
+  sync(){
+    this.flying = W().motion === 'fly';
+    this.k = depthK(this.t) * this.sizeVar;
+    this.h = VH * (this.flying ? 0.22 : 0.30) * this.k;
+    this.w = this.h * (this.spr.width/this.spr.height);
+    this.x = screenX(this.u, this.t);
+    this.baseY = this.flying ? VH*this.fy : groundY(this.t);
+    this.y = this.baseY - this.z*this.h;
+  }
+
+  /* Переезд в другой мир: старые координаты там бессмысленны — на ферме
+     персонаж мог стоять там, где в небе облако. Расставляем заново. */
+  replace(){
+    this.spr = bakeSprite(this.src);   // у нового мира другое светило
+    this.t = T_MIN + 0.12 + Math.random()*(0.88-T_MIN);
+    this.u = (Math.random()*2-1)*maxU(this.t)*0.85;
+    const band = W().flyBand || [0.12,0.7];
+    this.fyBase = band[0] + Math.random()*(band[1]-band[0]);
+    this.z = 0; this.vz = 0; this.du = 0; this.dt = 0;
+    this.greetLock = 2;
+    this.sync();
+  }
+
+  jump(power=1){
+    this.vz = (2.7 + Math.random()*0.9) * power;
+    this.du = (Math.random()*2-1) * 0.16;
+    this.dt = (Math.random()*2-1) * 0.16;
+    if (this.du) this.dir = this.du > 0 ? 1 : -1;
+    this.sy = 1.18; this.sx = 0.86;
+  }
+
+  update(dt, now){
+    this.alpha = Math.min(1, this.alpha + dt*2.5);
+    this.greetLock -= dt;
+    const mode = W().motion;
+    if (mode === 'drive') this.drive(dt);
+    else if (mode === 'fly') this.fly(dt, now);
+    else this.hop(dt);
+    // Разворот не мгновенный: спрайт сжимается по X, проходит «ребро»
+    // и расправляется в другую сторону — читается как поворот в 3D.
+    this.face += (this.dir - this.face) * Math.min(1, dt*5);
+    this.sx += (1-this.sx)*Math.min(1, dt*9);
+    this.sy += (1-this.sy)*Math.min(1, dt*9);
+    this.rest = Math.max(0, this.rest - dt);
+    const bAmp = this.rest > 0 ? 0.055 : 0.035;
+    this.breath = 1 + bAmp*Math.sin(now*0.0028*(this.rest > 0 ? 0.6 : 1) + this.phase);
+    this.sync();
+  }
+
+  hop(dt){
+    this.vz -= 11*dt;
+    this.z += this.vz*dt;
+    if (this.z > 0){
+      this.u += this.du*dt; this.t += this.dt*dt;
+      this.clamp();
+    } else {
+      if (this.vz < -1.2){
+        const p = Math.min(1, -this.vz/3.2);
+        this.sy = 1 - 0.34*p; this.sx = 1 + 0.34*p;
+        this.sync();
+        spawnDust(this.x, this.baseY, 5 + p*9, this.k);
+        SFX.land(p);
+      }
+      this.z = 0; this.vz = 0; this.du = 0; this.dt = 0;
+      // Как рыба в аквариуме: даже стоя, медленно плывёт по глубине —
+      // масштаб плавно дышит, и плоскость превращается в объём.
+      this.t += this.driftT*dt;
+      if (this.t < T_MIN + 0.05){ this.t = T_MIN + 0.05; this.driftT = Math.abs(this.driftT); }
+      if (this.t > 0.98){ this.t = 0.98; this.driftT = -Math.abs(this.driftT); }
+      this.cooldown -= dt;
+      if (this.cooldown <= 0){
+        // не метроном: иногда оглядывается, чихает или отдыхает
+        const r = Math.random();
+        if (r < 0.12){                                  // оглянулся
+          this.dir = -this.dir;
+          this.cooldown = 0.5 + Math.random()*0.9;
+        } else if (r < 0.20){                           // чихнул
+          this.sx = 1.3; this.sy = 0.72;
+          SFX.sneeze();
+          this.cooldown = 0.9 + Math.random()*1.2;
+        } else if (r < 0.32){                           // отдыхает, дышит глубже
+          this.rest = 2.5 + Math.random()*3;
+          this.cooldown = this.rest + 0.5;
+        } else {
+          this.jump();
+          if (Math.random() < 0.4)
+            this.driftT = (Math.random()<0.5?-1:1) * (0.006 + Math.random()*0.014);
+          this.cooldown = 1.0 + Math.random()*2.6;
+        }
+      }
+    }
+  }
+
+  /* машинки не скачут — они катятся, покачиваясь на подвеске */
+  drive(dt){
+    this.z = 0; this.vz = 0;
+    const lim = maxU(this.t);
+    this.u += this.dir * this.speed * dt;
+    if (this.u < -lim || this.u > lim){
+      this.u = Math.max(-lim, Math.min(lim, this.u));
+      this.dir = -this.dir;
+    }
+    this.cooldown -= dt;
+    if (this.cooldown <= 0){                    // иногда меняет полосу
+      this.dt = (Math.random()*2-1)*0.05;
+      this.cooldown = 2 + Math.random()*4;
+    }
+    this.t += this.dt*dt;
+    if (this.t < T_MIN || this.t > 1){ this.dt = -this.dt; }
+    this.clamp();
+    this.sy = 1 + 0.022*Math.sin(performance.now()*0.02 + this.phase);
+    if (Math.random() < dt*3) spawnDust(this.x - this.dir*this.w*0.4, this.baseY, 1, this.k*0.5);
+  }
+
+  /* птички не падают: дрейфуют по небу, покачиваясь на восходящих потоках */
+  fly(dt, now){
+    // Гравитации тут нет, поэтому высоту появления надо гасить руками:
+    // персонаж плавно спускается с «точки влёта» на свою полосу и остаётся там.
+    this.z += this.vz*dt;
+    this.vz *= Math.pow(0.06, dt);            // импульс от приветствия гаснет
+    this.z += (0 - this.z) * Math.min(1, dt*1.8);
+    if (Math.abs(this.z) < 0.004 && Math.abs(this.vz) < 0.02){ this.z = 0; this.vz = 0; }
+
+    this.u += this.driftU*dt;
+    this.clamp();
+    this.dir = this.driftU > 0 ? 1 : -1;
+
+    // Персонаж рисуется ВВЕРХ от своей высоты, поэтому нижняя граница полосы
+    // зависит от его роста: иначе крупные срезаются верхним краем экрана.
+    const band = W().flyBand || [0.12,0.7];
+    const lo = Math.max(band[0], this.h/VH + 0.045);
+    const hi = Math.max(lo + 0.05, band[1]);
+    this.fyBase += this.driftY*dt;
+    if (this.fyBase < lo){ this.fyBase = lo; this.driftY = Math.abs(this.driftY); }
+    if (this.fyBase > hi){ this.fyBase = hi; this.driftY = -Math.abs(this.driftY); }
+    this.fy = this.fyBase + 0.022*Math.sin(now*0.0011 + this.bob);
+
+    this.cooldown -= dt;
+    if (this.cooldown <= 0){                  // изредка меняет курс и глубину
+      this.driftU = (Math.random()<0.5?-1:1)*(0.05+Math.random()*0.11);
+      this.driftY = (Math.random()*2-1)*0.012;
+      this.dt = (Math.random()*2-1)*0.04;
+      this.cooldown = 2.5 + Math.random()*4;
+    }
+    this.t += this.dt*dt;
+    if (this.t < T_MIN || this.t > 1) this.dt = -this.dt;
+    this.clamp();
+  }
+
+  clamp(){
+    const lim = maxU(this.t);
+    if (this.u < -lim){ this.u = -lim; this.du = Math.abs(this.du); this.driftU = Math.abs(this.driftU); }
+    if (this.u >  lim){ this.u =  lim; this.du = -Math.abs(this.du); this.driftU = -Math.abs(this.driftU); }
+    if (this.t < T_MIN){ this.t = T_MIN; this.dt = Math.abs(this.dt); }
+    if (this.t > 1.0)  { this.t = 1.0;   this.dt = -Math.abs(this.dt); }
+  }
+
+  draw(now){
+    const s = this.spr, sw = s.width, sh = s.height, w = W();
+    const SL = 11;
+    const ww = this.w*this.sx, hh = this.h*this.sy*(this.breath||1);
+    const flying = this.flying;
+    const wob = (flying ? 6 : (this.z > 0.02 ? 5 : 2.2)) * this.k;
+
+    const px = this.x + camShift(this.t);
+    ctx.save();
+    // Полная плотность: «дымка» прозрачностью делала персонажей стеклянными.
+    // Глубину и так продают масштаб, реквизит и параллакс.
+    ctx.globalAlpha = this.alpha;
+    ctx.translate(px, this.baseY);
+
+    if (!flying){
+      const sq = Math.max(0, 1 - this.z*0.75);
+      ctx.save();
+      ctx.globalAlpha = this.alpha*0.3*sq;
+      ctx.fillStyle = w.shadow;
+      ctx.beginPath(); ctx.ellipse(0, 0, ww*0.36*sq, ww*0.11*sq, 0, 0, 6.283); ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.translate(0, -this.z*this.h);
+    const f = this.face || this.dir;
+    // покачивание корпусом на ходу: объёмная фигурка переваливается
+    const moving = this.z > 0.02 || W().motion !== 'hop';
+    const waddle = moving ? 1 + 0.04*Math.sin(now*0.02 + this.phase) : 1;
+    ctx.scale(Math.sign(f||1) * Math.max(0.07, Math.abs(f)) * waddle, 1);
+    // наклон по фазе прыжка: взлёт — вперёд, падение — назад
+    const tilt = flying ? 0.05
+               : (this.z > 0.02 ? Math.max(-0.16, Math.min(0.16, this.vz*0.045)) : 0);
+    if (tilt) ctx.rotate(tilt);
+    const step = sh/SL, dh = hh/SL;
+    for (let i=0;i<SL;i++){
+      const k = i/SL;
+      const off = Math.sin(now*(flying?0.009:0.004) + this.phase + k*2.4) * wob * (1-k*0.55);
+      const wk = ww * (0.94 + 0.10*k);   // низ шире верха — стоит в перспективе
+      ctx.drawImage(s, 0, i*step, sw, step+1, -wk/2 + off, -hh + i*dh, wk, dh+1);
+    }
+    ctx.restore();
+
+    if (this.name){
+      ctx.save();
+      ctx.globalAlpha = this.alpha*0.85;
+      ctx.font = `600 ${Math.max(10, 26*this.k)}px -apple-system,sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(0,0,0,.4)';
+      ctx.fillText(this.name, px+1, this.baseY + 22*this.k + 1);
+      ctx.fillStyle = w.tag;
+      ctx.fillText(this.name, px, this.baseY + 22*this.k);
+      ctx.restore();
+    }
+  }
+}
+
+/* ---------- случайные встречи ---------- */
+let greetTimer = 0;
+function socialize(dt){
+  greetTimer -= dt;
+  if (greetTimer > 0 || monsters.length < 2 || W().motion === 'drive') return;
+  const flying = W().motion === 'fly';
+  greetTimer = 0.5;
+  for (let i=0;i<monsters.length;i++){
+    const a = monsters[i];
+    if ((!flying && a.z > 0.02) || a.greetLock > 0) continue;
+    for (let j=i+1;j<monsters.length;j++){
+      const b = monsters[j];
+      if ((!flying && b.z > 0.02) || b.greetLock > 0) continue;
+      if (Math.hypot((a.x-b.x)/VW, (a.baseY-b.baseY)/VH*1.7) > 0.085) continue;
+      if (flying){ a.vz = 1.6; b.vz = 1.6; } else { a.jump(1.25); b.jump(1.25); }
+      a.dir = a.x < b.x ? 1 : -1; b.dir = -a.dir;
+      a.greetLock = b.greetLock = 4 + Math.random()*4;
+      SFX.greet();
+      const mx = (a.x+b.x)/2, my = (a.baseY+b.baseY)/2 - Math.max(a.h,b.h)*0.55;
+      for (let n=0;n<12;n++) sparks.push({
+        x:mx, y:my, vx:(Math.random()-0.5)*130, vy:-30-Math.random()*110,
+        life:1, r:2+Math.random()*3
+      });
+      return;
+    }
+  }
+}
+
+function spawnDust(x, y, n, k){
+  for (let i=0;i<n;i++) dust.push({
+    x, y, vx:(Math.random()-0.5)*180*k, vy:-Math.random()*120*k,
+    life:1, r:(2+Math.random()*4)*Math.max(.45,k)
+  });
+}
+function spawnPortal(x, y){ portals.push({x, y, t:0}); SFX.portal(); }
+
+/* ---------- смена мира ---------- */
+function setWorld(id, bg){
+  if (id) WORLD_ID = id;
+  customBg = bg || null;
+  HZ = VH * W().horizon;
+  makeStars(); makeDecor(); buildForeground(); makeProps();
+  ambient.length = 0; SFX.world(WORLD_ID);
+  for (const m of monsters){ m.greetLock = 1; m.sync(); }
+}
+
+/* ---------- главный цикл ---------- */
+let last = performance.now();
+function frame(now){
+  const dt = Math.min(0.05, (now-last)/1000); last = now;
+  cam = (Math.sin(now*0.000041) + 0.6*Math.sin(now*0.000017 + 2.1)) * VW*0.009;
+
+  drawSky(now);
+  drawGround();
+
+  for (const p of portals) p.t += dt;
+  for (let i=portals.length-1;i>=0;i--){
+    const p = portals[i];
+    if (p.t > 0.7){ portals.splice(i,1); continue; }
+    const k = p.t/0.7;
+    ctx.save();
+    ctx.globalAlpha = (1-k)*0.85;
+    ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 6*(1-k)+1;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 20 + k*VH*0.26, 0, 6.283); ctx.stroke();
+    ctx.restore();
+  }
+
+  if (W().decor === 'clouds')
+    for (const d of decor){
+      d.u += d.drift*dt;
+      if (d.u < -1.3) d.u = 1.3;
+      if (d.u >  1.3) d.u = -1.3;
+    }
+
+  for (const m of monsters) m.update(dt, now);
+  socialize(dt);
+  updateAmbient(dt, now);
+
+  const useBg = !!(customBg || bgFor(WORLD_ID));
+  const scene = (useBg ? [] : decor).concat(props, monsters).sort((a,b)=> a.t - b.t);
+  for (const o of scene) o.isDecor ? drawDecor(o) : (o.isProp ? drawProp(o, now) : o.draw(now));
+  drawAmbient(now);
+  drawForeground();
+
+  for (let i=dust.length-1;i>=0;i--){
+    const d = dust[i];
+    d.vy += 600*dt; d.x += d.vx*dt; d.y += d.vy*dt; d.life -= dt*1.6;
+    if (d.life <= 0){ dust.splice(i,1); continue; }
+    ctx.globalAlpha = d.life*0.5; ctx.fillStyle = W().dust;
+    ctx.beginPath(); ctx.arc(d.x, d.y, d.r*d.life, 0, 6.283); ctx.fill();
+  }
+  for (let i=sparks.length-1;i>=0;i--){
+    const s = sparks[i];
+    s.vy += 190*dt; s.x += s.vx*dt; s.y += s.vy*dt; s.life -= dt*1.1;
+    if (s.life <= 0){ sparks.splice(i,1); continue; }
+    ctx.globalAlpha = s.life; ctx.fillStyle = '#ffd23f';
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r*s.life, 0, 6.283); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  requestAnimationFrame(frame);
+}
+
+/* =====================================================================
+   ЧАСТЬ 3. ИНТЕРФЕЙС
+   ===================================================================== */
+
+const $ = id => document.getElementById(id);
+const sheet = $('sheet'), preview = $('preview'), tiles = $('tiles');
+let pending = null;      // {sprites, pick, rot}
+
+/* Пока считаем — большой понятный экран с часиками. Ребёнок видит, что
+   машинка думает, и физически не может нажать «сфоткать» ещё раз. */
+function showBusy(title, sub){
+  $('busyTitle').textContent = title;
+  $('busySub').textContent = sub || 'Немножко подожди';
+  $('busy').classList.add('on');
+}
+function hideBusy(){ $('busy').classList.remove('on'); }
+
+function toast(msg, ms=2600){
+  const el = $('toast'); el.textContent = msg; el.classList.add('on');
+  clearTimeout(toast._t); toast._t = setTimeout(()=> el.classList.remove('on'), ms);
+}
+
+function drawPreview(){
+  const src = pending.sprites[pending.pick];
+  const rot = pending.rot & 3;
+  const swap = rot % 2 === 1;
+  const w = swap ? src.height : src.width, h = swap ? src.width : src.height;
+  const box = 300, s = Math.min(box/w, box/h);
+  preview.width = Math.round(w*s); preview.height = Math.round(h*s);
+  const c = preview.getContext('2d');
+  c.clearRect(0,0,preview.width,preview.height);
+  c.save();
+  c.translate(preview.width/2, preview.height/2);
+  c.rotate(rot*Math.PI/2);
+  c.drawImage(src, -src.width*s/2, -src.height*s/2, src.width*s, src.height*s);
+  c.restore();
+}
+
+function bakeRotated(){
+  const src = pending.sprites[pending.pick], rot = pending.rot & 3;
+  if (!rot) return src;
+  const swap = rot % 2 === 1;
+  const c = document.createElement('canvas');
+  c.width = swap ? src.height : src.width;
+  c.height = swap ? src.width : src.height;
+  const x = c.getContext('2d');
+  x.translate(c.width/2, c.height/2); x.rotate(rot*Math.PI/2);
+  x.drawImage(src, -src.width/2, -src.height/2);
+  return c;
+}
+
+function showSheet(res){
+  pending = {sprites: res.sprites, pick: 0, rot: 0,
+             sheetData: {rgb: res.rgb, mask: res.mask, w: res.w, h: res.h}};
+  $('nameIn').value = '';
+  $('sheetTitle').textContent = 'Вот твой монстрик!';
+  $('sheetSub').textContent = res.sprites.length > 1
+      ? 'Поймал не того? Нажми на нужного внизу.'
+      : 'Если что-то не так — можно обвести пальцем.';
+  renderTiles();
+  drawPreview();
+  sheet.classList.add('on');
+}
+
+/* Плитки с найденными объектами видны всегда, когда есть выбор:
+   ребёнок просто тыкает в нужного, никаких скрытых меню. */
+function renderTiles(){
+  tiles.innerHTML = '';
+  if (!pending || pending.sprites.length < 2){ tiles.classList.remove('on'); return; }
+  pending.sprites.forEach((spr, i)=>{
+    const c = document.createElement('canvas');
+    c.width = 104; c.height = 104;
+    const x = c.getContext('2d');
+    const k = Math.min(88/spr.width, 88/spr.height);
+    x.drawImage(spr, (104-spr.width*k)/2, (104-spr.height*k)/2, spr.width*k, spr.height*k);
+    if (i === pending.pick) c.className = 'sel';
+    c.onclick = ()=>{
+      pending.pick = i; pending.rot = 0;
+      [...tiles.children].forEach(n=>n.className='');
+      c.className = 'sel';
+      drawPreview();
+    };
+    tiles.appendChild(c);
+  });
+  tiles.classList.add('on');
+}
+
+$('rotBtn').onclick = ()=>{ if (pending){ pending.rot = (pending.rot+1)&3; drawPreview(); } };
+
+/* ---------- обводка пальцем ----------
+   Запасной выход, когда автоматика слепила объекты в кучу: человек обводит
+   героя как умеет, а точность добирает маска чернил — внутрь контура попадает
+   только нарисованное, бумага остаётся прозрачной. */
+const lcv = $('lassoCv'), lx = lcv.getContext('2d');
+let lassoPts = [], lassoScale = 1, lassoBg = null, lassoDrawing = false;
+
+let lassoKeepBg = false;                 // false: только рисунок; true: всё внутри контура
+
+function openLasso(){
+  if (!pending || !pending.sheetData){ toast('Сначала сфоткай рисунок'); return; }
+  const {rgb, w, h} = pending.sheetData;
+  lassoBg = document.createElement('canvas'); lassoBg.width = w; lassoBg.height = h;
+  const bx = lassoBg.getContext('2d'), im = bx.createImageData(w, h);
+  for (let i=0;i<w*h;i++){
+    im.data[i*4] = rgb[i*3]; im.data[i*4+1] = rgb[i*3+1];
+    im.data[i*4+2] = rgb[i*3+2]; im.data[i*4+3] = 255;
+  }
+  bx.putImageData(im, 0, 0);
+  lassoScale = Math.min(innerWidth*0.94/w, innerHeight*0.62/h, 1);
+  lcv.width = Math.round(w*lassoScale); lcv.height = Math.round(h*lassoScale);
+  lassoPts = [];
+  redrawLasso();
+  $('lasso').classList.add('on');
+}
+
+function redrawLasso(){
+  lx.drawImage(lassoBg, 0, 0, lcv.width, lcv.height);
+  if (!lassoPts.length) return;
+  lx.strokeStyle = '#e8a400'; lx.lineWidth = 3; lx.lineJoin = 'round'; lx.lineCap = 'round';
+  lx.beginPath();
+  lx.moveTo(lassoPts[0].x*lassoScale, lassoPts[0].y*lassoScale);
+  for (const p of lassoPts) lx.lineTo(p.x*lassoScale, p.y*lassoScale);
+  lx.stroke();
+  if (lassoPts.length > 2){                       // пунктир до замыкания
+    lx.setLineDash([6,6]);
+    lx.beginPath();
+    lx.moveTo(lassoPts[lassoPts.length-1].x*lassoScale, lassoPts[lassoPts.length-1].y*lassoScale);
+    lx.lineTo(lassoPts[0].x*lassoScale, lassoPts[0].y*lassoScale);
+    lx.stroke();
+    lx.setLineDash([]);
+  }
+}
+
+function lassoPoint(e){
+  const r = lcv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width  * pending.sheetData.w,
+           y: (e.clientY - r.top)  / r.height * pending.sheetData.h };
+}
+lcv.addEventListener('pointerdown', e=>{
+  e.preventDefault(); lcv.setPointerCapture(e.pointerId);
+  lassoDrawing = true; lassoPts = [lassoPoint(e)]; redrawLasso();
+});
+lcv.addEventListener('pointermove', e=>{
+  if (!lassoDrawing) return;
+  const p = lassoPoint(e), last = lassoPts[lassoPts.length-1];
+  if (Math.hypot(p.x-last.x, p.y-last.y) > 3){ lassoPts.push(p); redrawLasso(); }
+});
+lcv.addEventListener('pointerup', ()=>{ lassoDrawing = false; });
+
+function lassoCut(){
+  const {rgb, mask, w, h} = pending.sheetData;
+  if (lassoPts.length < 3) return null;
+  const pc = document.createElement('canvas'); pc.width = w; pc.height = h;
+  const px = pc.getContext('2d');
+  px.fillStyle = '#fff';
+  px.beginPath(); px.moveTo(lassoPts[0].x, lassoPts[0].y);
+  for (const p of lassoPts) px.lineTo(p.x, p.y);
+  px.closePath(); px.fill();
+  const pd = px.getImageData(0, 0, w, h).data;
+
+  let x0 = w, y0 = h, x1 = 0, y1 = 0, n = 0;
+  const inPoly = new Uint8Array(w*h);
+  for (let i=0;i<w*h;i++){
+    if (pd[i*4+3] > 128 && (lassoKeepBg || mask[i])){
+      inPoly[i] = 1; n++;
+      const X = i%w, Y = (i/w)|0;
+      if (X<x0) x0=X; if (X>x1) x1=X;
+      if (Y<y0) y0=Y; if (Y>y1) y1=Y;
+    }
+  }
+  if (n < 150) return null;
+  const pad = 6;
+  x0 = Math.max(0, x0-pad); y0 = Math.max(0, y0-pad);
+  x1 = Math.min(w-1, x1+pad); y1 = Math.min(h-1, y1+pad);
+  const sw = x1-x0+1, sh = y1-y0+1;
+
+  const a = new Uint8Array(sw*sh);
+  for (let y=0;y<sh;y++) for (let x=0;x<sw;x++)
+    a[y*sw+x] = inPoly[(y0+y)*w + (x0+x)];
+  fillHoles(a, sw, sh);
+
+  const c = document.createElement('canvas'); c.width = sw; c.height = sh;
+  const cx2 = c.getContext('2d'), out = cx2.createImageData(sw, sh);
+  for (let y=0;y<sh;y++) for (let x=0;x<sw;x++){
+    const si = (y0+y)*w + (x0+x), di = (y*sw+x)*4;
+    out.data[di]   = rgb[si*3];
+    out.data[di+1] = rgb[si*3+1];
+    out.data[di+2] = rgb[si*3+2];
+    out.data[di+3] = a[y*sw+x] ? 255 : 0;
+  }
+  cx2.putImageData(out, 0, 0);
+  return softenEdge(c);
+}
+
+$('lassoBtn').onclick = openLasso;
+/* «Фон» — кнопка-лампочка: горит — фон останется, погасла — обрежется */
+$('lassoBgBtn').onclick = ()=>{
+  lassoKeepBg = !lassoKeepBg;
+  $('lassoBgBtn').classList.toggle('lit', lassoKeepBg);
+};
+$('lassoRedo').onclick = ()=>{ lassoPts = []; redrawLasso(); };
+$('lassoCancel').onclick = ()=>{ $('lasso').classList.remove('on'); };
+$('lassoOk').onclick = ()=>{
+  const cut = lassoCut();
+  if (!cut){ toast('Внутри контура рисунка не нашлось — обведи ещё раз'); return; }
+  pending.sprites.push(cut);
+  pending.pick = pending.sprites.length - 1;
+  pending.rot = 0;
+  $('lasso').classList.remove('on');
+  renderTiles();
+  drawPreview();
+  toast('Вырезано по контуру');
+};
+$('cancelBtn').onclick = ()=>{ sheet.classList.remove('on'); pending = null; };
+
+$('goBtn').onclick = ()=>{
+  if (!pending) return;
+  const spr = bakeRotated();
+  const name = $('nameIn').value;
+  sheet.classList.remove('on');
+  pending = null;
+  mode() === 'phone' ? sendToScreen(spr, name) : publishMonster(spr, name);
+};
+
+function addMonster(spr, name, id){
+  const m = new Monster(spr, name);
+  m.id = id || null;
+  spawnPortal(m.x, m.baseY - m.h*0.5);
+  // соседи оборачиваются на новичка и радостно подпрыгивают
+  if (W().motion !== 'drive')
+    for (const o of monsters){
+      if (Math.abs(o.x - m.x) > VW*0.33 || o.z > 0.02) continue;
+      o.jump(0.7 + Math.random()*0.4);
+      o.dir = m.x > o.x ? 1 : -1;     // после jump: он выбирает направление сам
+      o.du = Math.abs(o.du) * o.dir;  // и скачет к новичку, а не куда попало
+      o.greetLock = 3;
+    }
+  monsters.push(m);
+  while (monsters.length > MAX_MONSTERS) monsters.shift();
+  $('count').textContent = monsters.length;
+}
+
+/* --- загрузка файла --- */
+$('addBtn').onclick = ()=> $('file').click();
+$('file').onchange = e => { const f = e.target.files[0]; if (f) handleFile(f); e.target.value=''; };
+
+addEventListener('dragover', e=>e.preventDefault());
+addEventListener('drop', e=>{ e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); });
+
+/* ---------- чтение снимка ----------
+   Safari и iOS читают HEIC сами, поэтому сперва пробуем нативно и ничего
+   не качаем. Только если браузер не осилил (Chrome, Firefox) — подтягиваем
+   вендорный декодер. Он лежит рядом в vendor/, грузится один раз и кешируется. */
+
+const isHeic = f => /\.(heic|heif)$/i.test(f.name) || /image\/hei[cf]/.test(f.type || '');
+
+function loadNative(file){
+  return new Promise((res, rej)=>{
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      URL.revokeObjectURL(url);
+      // Никакого img.decode(): в фоновой вкладке он может не разрешиться никогда.
+      // drawImage декодирует сам, а naturalWidth после onload уже известен.
+      img.naturalWidth ? res(img) : rej(new Error('пустая картинка'));
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); rej(new Error('формат не поддержан')); };
+    img.src = url;
+  });
+}
+
+let heifLib = null;
+function ensureHeif(){
+  if (heifLib) return heifLib;
+  heifLib = (async ()=>{
+    await new Promise((res, rej)=>{
+      const s = document.createElement('script');
+      s.src = '/vendor/libheif.js';
+      s.onload = res;
+      s.onerror = ()=> rej(new Error('нет vendor/libheif.js'));
+      document.head.appendChild(s);
+    });
+    const r = await fetch('/vendor/libheif.wasm');
+    if (!r.ok) throw new Error('нет vendor/libheif.wasm');
+    const mod = libheif({ wasmBinary: new Uint8Array(await r.arrayBuffer()) });
+    if (mod && typeof mod.then === 'function') return await mod;
+    if (mod && mod.ready && typeof mod.ready.then === 'function') await mod.ready;
+    return mod;
+  })().catch(e => { heifLib = null; throw e; });
+  return heifLib;
+}
+
+/* Декодер отдаёт кадр «как снято сенсором», без поворота. Айфон почти всегда
+   пишет портрет как повёрнутый ландшафт, а как его вертеть — сказано в EXIF.
+   Читаем тег Orientation (0x0112) сами: это два десятка строк против ещё
+   одной библиотеки. */
+function exifOrientation(buf){
+  const lim = Math.min(buf.length, 1048576);
+  for (let i=0;i<lim-16;i++){
+    if (!(buf[i]===0x45 && buf[i+1]===0x78 && buf[i+2]===0x69 &&
+          buf[i+3]===0x66 && buf[i+4]===0 && buf[i+5]===0)) continue;
+    const p = i + 6;
+    // «Exif» встречается и как имя бокса в контейнере, поэтому обязательно
+    // убеждаемся, что дальше идёт настоящий TIFF-заголовок, иначе ищем дальше
+    const le = buf[p]===0x49 && buf[p+1]===0x49 && buf[p+2]===42 && buf[p+3]===0;
+    const be = buf[p]===0x4D && buf[p+1]===0x4D && buf[p+2]===0  && buf[p+3]===42;
+    if (!le && !be) continue;
+
+    const u16 = o => le ? (buf[o] | buf[o+1]<<8) : (buf[o]<<8 | buf[o+1]);
+    const u32 = o => le ? (buf[o] + buf[o+1]*256 + buf[o+2]*65536 + buf[o+3]*16777216)
+                        : (buf[o]*16777216 + buf[o+1]*65536 + buf[o+2]*256 + buf[o+3]);
+    const ifd = p + u32(p+4);
+    if (ifd < 0 || ifd+2 > buf.length) continue;
+    const n = u16(ifd);
+    for (let k=0;k<n;k++){
+      const e = ifd + 2 + k*12;
+      if (e+10 > buf.length) break;
+      if (u16(e) === 0x0112){
+        const v = u16(e+8);
+        if (v >= 1 && v <= 8) return v;
+      }
+    }
+  }
+  return 1;
+}
+
+/* HEIF хранит поворот отдельно от EXIF — в боксе irot (угол против часовой,
+   шагами по 90°). Переводим его в тот же код ориентации, что и EXIF. */
+function heifRotation(buf){
+  const lim = Math.min(buf.length, 262144);
+  for (let i=4;i<lim-5;i++){
+    if (buf[i]===0x69 && buf[i+1]===0x72 && buf[i+2]===0x6F && buf[i+3]===0x74){
+      const size = buf[i-4]<<24 | buf[i-3]<<16 | buf[i-2]<<8 | buf[i-1];
+      if (size !== 9) continue;
+      const ccw = buf[i+4] & 3;
+      return ccw === 1 ? 8 : ccw === 2 ? 3 : ccw === 3 ? 6 : 1;
+    }
+  }
+  return 1;
+}
+
+function applyOrientation(src, o){
+  if (!o || o === 1) return src;
+  const w = src.width, h = src.height, swap = o >= 5;
+  const c = document.createElement('canvas');
+  c.width = swap ? h : w; c.height = swap ? w : h;
+  const x = c.getContext('2d');
+  switch (o){
+    case 2: x.translate(w, 0); x.scale(-1, 1); break;
+    case 3: x.translate(w, h); x.rotate(Math.PI); break;
+    case 4: x.translate(0, h); x.scale(1, -1); break;
+    case 5: x.rotate(Math.PI/2); x.scale(1, -1); break;
+    case 6: x.rotate(Math.PI/2); x.translate(0, -h); break;
+    case 7: x.rotate(Math.PI/2); x.translate(w, -h); x.scale(-1, 1); break;
+    case 8: x.rotate(-Math.PI/2); x.translate(-w, 0); break;
+  }
+  x.drawImage(src, 0, 0);
+  return c;
+}
+
+async function loadHeic(file){
+  const lib = await ensureHeif();
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const imgs = new lib.HeifDecoder().decode(buf);
+  if (!imgs || !imgs.length) throw new Error('в файле нет кадра');
+  const im = imgs[0];
+  const w = im.get_width(), h = im.get_height();
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const cx = c.getContext('2d');
+  const out = cx.createImageData(w, h);
+  await new Promise((res, rej)=>
+    im.display(out, d => d ? res() : rej(new Error('декодер не справился'))));
+  cx.putImageData(out, 0, 0);
+  // EXIF и irot независимы: берём тот, который непустой
+  const ex = exifOrientation(buf), ir = heifRotation(buf);
+  return applyOrientation(c, ex !== 1 ? ex : ir);
+}
+
+async function loadPicture(file){
+  try { return await loadNative(file); }
+  catch (e){
+    if (!isHeic(file)) throw e;
+    $('busySub').textContent = 'Читаю снимок с айфона…';
+    return await loadHeic(file);
+  }
+}
+
+async function handleFile(file){
+  showBusy('Ищу монстрика на листе…', 'Немножко подожди');
+  let pic;
+  try { pic = await loadPicture(file); }
+  catch (err){
+    console.error(err);
+    hideBusy();
+    toast('Не смог прочитать снимок: ' + err.message, 5000);
+    return;
+  }
+  await new Promise(r => setTimeout(r, 60));     // даём часикам провернуться
+  try{
+    const t0 = performance.now();
+    const res = extract(pic);
+    if (!res.ok){ hideBusy(); toast(res.reason, 4000); return; }
+    renderDebug(res);
+    hideBusy();
+    showSheet(res);
+  }catch(err){
+    console.error(err);
+    hideBusy();
+    toast('Не смог обработать: ' + err.message, 5000);
+  }
+}
+
+/* --- отладочные картинки: выпрямленный лист + маска --- */
+function renderDebug(res){
+  const a = $('dbg1'), b = $('dbg2');
+  a.width = res.w; a.height = res.h;
+  a.getContext('2d').putImageData(res.sheet, 0, 0);
+  b.width = res.w; b.height = res.h;
+  const bx = b.getContext('2d'), im = bx.createImageData(res.w, res.h);
+  for (let i=0;i<res.w*res.h;i++){
+    const v = res.mask[i] ? 255 : 0;
+    im.data[i*4]=v; im.data[i*4+1]=v; im.data[i*4+2]=v; im.data[i*4+3]=255;
+  }
+  bx.putImageData(im, 0, 0);
+}
+$('help').onclick = ()=> $('dbg').classList.toggle('on');
+
+/* ---------- рисование прямо на устройстве ----------
+   Не у всех под рукой бумага и фломастеры. Белый лист, толстая кисть,
+   девять цветов и ластик — больше шестилетнему не надо. Штрихи храним
+   списком, а не картинками: «шаг назад» — просто выкинуть последний
+   и перерисовать, память телефона при этом не страдает. */
+const DRAW_COLORS = ['#141414','#e5322d','#ff8a1e','#ffd23f','#3fb950',
+                     '#2f7bff','#8b5cf6','#ff6ea9','#8b5a2b'];
+const DRAW_SIZES  = [6, 14, 30];
+const dcv = $('drawCv'), dctx = dcv.getContext('2d', {willReadFrequently:true});
+let dStrokes = [], dCur = null, dColor = DRAW_COLORS[0], dSize = DRAW_SIZES[1],
+    dScale = 1, dErase = false, dPalBuilt = false;
+
+function buildPalette(){
+  if (dPalBuilt) return;
+  dPalBuilt = true;
+  const pal = $('drawPal');
+  for (const col of DRAW_COLORS){
+    const b = document.createElement('button');
+    b.className = 'swatch' + (col === dColor ? ' sel' : '');
+    b.style.background = col;
+    b.onclick = ()=>{ dColor = col; dErase = false; markPalette(); };
+    b.dataset.col = col;
+    pal.appendChild(b);
+  }
+  for (const sz of DRAW_SIZES){
+    const b = document.createElement('button');
+    b.className = 'sizeBtn' + (sz === dSize ? ' sel' : '');
+    b.dataset.size = sz;
+    const i = document.createElement('i');
+    const px = Math.round(6 + sz*0.55);
+    i.style.width = px + 'px'; i.style.height = px + 'px';
+    b.appendChild(i);
+    b.onclick = ()=>{ dSize = sz; markPalette(); };
+    pal.appendChild(b);
+  }
+  const er = document.createElement('button');
+  er.className = 'sizeBtn'; er.id = 'drawErase'; er.innerHTML = ico('eraser');
+  er.querySelector('svg').style.cssText = 'width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2';
+  er.onclick = ()=>{ dErase = true; markPalette(); };
+  pal.appendChild(er);
+}
+function markPalette(){
+  for (const b of $('drawPal').children){
+    if (b.dataset.col !== undefined) b.classList.toggle('sel', !dErase && b.dataset.col === dColor);
+    else if (b.dataset.size !== undefined) b.classList.toggle('sel', +b.dataset.size === dSize);
+    else b.classList.toggle('sel', dErase);
+  }
+}
+
+function redrawDraw(){
+  dctx.fillStyle = '#fff'; dctx.fillRect(0, 0, dcv.width, dcv.height);
+  dctx.lineCap = 'round'; dctx.lineJoin = 'round';
+  for (const st of dStrokes) strokePath(st);
+}
+function strokePath(st){
+  dctx.strokeStyle = st.c; dctx.fillStyle = st.c; dctx.lineWidth = st.w;
+  if (st.p.length === 1){
+    dctx.beginPath(); dctx.arc(st.p[0].x, st.p[0].y, st.w/2, 0, 6.283); dctx.fill(); return;
+  }
+  dctx.beginPath(); dctx.moveTo(st.p[0].x, st.p[0].y);
+  for (let i=1;i<st.p.length;i++) dctx.lineTo(st.p[i].x, st.p[i].y);
+  dctx.stroke();
+}
+
+function openDraw(){
+  buildPalette();
+  $('draw').classList.add('on');
+  // размер считаем сразу: getBoundingClientRect сам пересчитает раскладку,
+  // а requestAnimationFrame в свёрнутой вкладке может не сработать никогда
+  const r = dcv.getBoundingClientRect();
+  let k = Math.min(2, window.devicePixelRatio || 1);
+  const big = Math.max(r.width, r.height) * k;
+  if (big > 1100) k *= 1100 / big;               // выше 1100 px вырезание тормозит
+  dcv.width  = Math.max(320, Math.round((r.width  || 360) * k));
+  dcv.height = Math.max(320, Math.round((r.height || 520) * k));
+  dStrokes = [];
+  redrawDraw();
+}
+/* Масштаб берём каждый раз заново: телефон могли повернуть, и растянутый
+   холст уже не совпадает с тем, что был при открытии. */
+function drawScale(){
+  const r = dcv.getBoundingClientRect();
+  return r.width ? dcv.width / r.width : 1;
+}
+function drawPoint(e){
+  const r = dcv.getBoundingClientRect();
+  return {x: (e.clientX - r.left) * (r.width  ? dcv.width  / r.width  : 1),
+          y: (e.clientY - r.top)  * (r.height ? dcv.height / r.height : 1)};
+}
+dcv.addEventListener('pointerdown', e=>{
+  e.preventDefault();
+  try { dcv.setPointerCapture(e.pointerId); } catch(err){}
+  dScale = drawScale();
+  dCur = {c: dErase ? '#ffffff' : dColor, w: (dErase ? dSize*2.2 : dSize) * dScale, p: [drawPoint(e)]};
+  dStrokes.push(dCur);
+  strokePath(dCur);
+});
+dcv.addEventListener('pointermove', e=>{
+  if (!dCur) return;
+  const p = drawPoint(e), last = dCur.p[dCur.p.length-1];
+  if (Math.hypot(p.x-last.x, p.y-last.y) < 1.5) return;
+  dCur.p.push(p);
+  dctx.strokeStyle = dCur.c; dctx.lineWidth = dCur.w;
+  dctx.lineCap = 'round'; dctx.lineJoin = 'round';
+  dctx.beginPath(); dctx.moveTo(last.x, last.y); dctx.lineTo(p.x, p.y); dctx.stroke();
+});
+const endStroke = ()=>{ dCur = null; };
+dcv.addEventListener('pointerup', endStroke);
+dcv.addEventListener('pointercancel', endStroke);
+
+/* Лист белый, значит фон — то, что тянется от краёв: та же «палочка», что и
+   для фотографий. Белое ВНУТРИ замкнутого контура остаётся — это заливка
+   мордочки, а не фон. */
+function drawToSprite(){
+  const w = dcv.width, h = dcv.height;
+  const d = dctx.getImageData(0, 0, w, h).data;
+  const rgb = new Uint8ClampedArray(w*h*3);
+  for (let i=0;i<w*h;i++){ rgb[i*3]=d[i*4]; rgb[i*3+1]=d[i*4+1]; rgb[i*3+2]=d[i*4+2]; }
+  const bg = borderBackground(rgb, w, h, 34);
+  let x0=w, y0=h, x1=-1, y1=-1, n=0;
+  for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+    if (bg[y*w+x]) continue;
+    n++; if (x<x0) x0=x; if (x>x1) x1=x; if (y<y0) y0=y; if (y>y1) y1=y;
+  }
+  if (n < 400) return null;
+  const pad = 8;
+  x0 = Math.max(0, x0-pad); y0 = Math.max(0, y0-pad);
+  x1 = Math.min(w-1, x1+pad); y1 = Math.min(h-1, y1+pad);
+  const sw = x1-x0+1, sh = y1-y0+1;
+  const c = document.createElement('canvas'); c.width = sw; c.height = sh;
+  const cx = c.getContext('2d'), out = cx.createImageData(sw, sh);
+  for (let y=0;y<sh;y++) for (let x=0;x<sw;x++){
+    const si = (y0+y)*w + (x0+x), di = (y*sw+x)*4;
+    out.data[di]   = rgb[si*3];
+    out.data[di+1] = rgb[si*3+1];
+    out.data[di+2] = rgb[si*3+2];
+    out.data[di+3] = bg[si] ? 0 : 255;
+  }
+  cx.putImageData(out, 0, 0);
+  return softenEdge(c);
+}
+
+$('drawUndo').onclick  = ()=>{ dStrokes.pop(); redrawDraw(); };
+$('drawWipe').onclick  = ()=>{ dStrokes = []; redrawDraw(); };
+$('drawClose').onclick = ()=>{ $('draw').classList.remove('on'); };
+$('drawGo').onclick    = ()=>{
+  const spr = drawToSprite();
+  if (!spr){ toast('Лист пустой — нарисуй монстрика'); return; }
+  $('draw').classList.remove('on');
+  mode() === 'phone' ? sendToScreen(spr, '') : publishMonster(spr, '');
+};
+
+/* ---------- выбор мира ---------- */
+function worldThumb(id){
+  const w = WORLDS[id];
+  const c = document.createElement('canvas');
+  c.width = 264; c.height = 152;
+  const x = c.getContext('2d');
+  const img = (id === 'custom' && customBg) ? customBg : bgFor(id);
+  if (img){ x.drawImage(img, 0, 0, c.width, c.height); return c; }
+  const hz = c.height * w.horizon;
+  const g = x.createLinearGradient(0,0,0,hz);
+  g.addColorStop(0,w.sky[0]); g.addColorStop(.65,w.sky[1]); g.addColorStop(1,w.sky[2]);
+  x.fillStyle = g; x.fillRect(0,0,c.width,hz+1);
+  for (const l of w.lights){
+    x.fillStyle = l.c; x.globalAlpha = l.a;
+    x.beginPath(); x.arc(c.width*l.x, hz*l.y*2.2, c.width*l.r*0.9, 0, 6.283); x.fill();
+  }
+  x.globalAlpha = 1;
+  for (const h of w.hills){
+    x.fillStyle = h.col; x.beginPath(); x.moveTo(0,hz+1);
+    for (let px=0; px<=c.width; px+=8)
+      x.lineTo(px, hz*h.base + Math.sin(px*0.045)*hz*h.amp*2.4);
+    x.lineTo(c.width,hz+1); x.closePath(); x.fill();
+  }
+  const g2 = x.createLinearGradient(0,hz,0,c.height);
+  g2.addColorStop(0,w.ground[0]); g2.addColorStop(.35,w.ground[1]); g2.addColorStop(1,w.ground[2]);
+  x.fillStyle = g2; x.fillRect(0,hz,c.width,c.height-hz);
+  return c;
+}
+
+let askWorld = null;
+
+/* Открыть выбор мира. Карточки рисуются сразу, а когда подъедут фоновые
+   картинки — перерисовываются: иначе половина миров показана градиентом. */
+function openWorlds(){
+  buildWorldList();
+  $('worlds').classList.add('on');
+}
+bgReady.push(()=>{ if ($('worlds').classList.contains('on') && !$('moveAsk').classList.contains('on')) buildWorldList(); });
+
+function buildWorldList(){
+  const list = $('worldList');
+  list.innerHTML = '';
+  askWorld = null;
+  for (const id of Object.keys(WORLDS)){
+    if (id === 'custom' && !customBg) continue;   // пустой «свой мир» не предлагаем
+    const cur = IS_PHONE ? remoteWorldId : (customBg ? 'custom' : WORLD_ID);
+    const b = document.createElement('button');
+    b.className = 'wcard' + (id === cur ? ' sel' : '');
+    b.appendChild(worldThumb(id));
+    const s = document.createElement('span');
+    s.textContent = WORLDS[id].label;
+    b.appendChild(s);
+    b.onclick = ()=>{
+      [...list.children].forEach(n=>n.classList.remove('sel'));
+      b.classList.add('sel');
+      chooseWorld(id);
+    };
+    list.appendChild(b);
+  }
+}
+
+/* Жителей переносить или оставить — вопрос один и тот же, кто бы ни жал:
+   человек у экрана или ребёнок с телефоном-пультом. */
+function chooseWorld(id){
+  const busy = IS_PHONE ? remoteCount > 0 : monsters.length > 0;
+  if (busy){ askWorld = id; $('moveAsk').classList.add('on'); return; }
+  applyWorldPick(id, true);
+  $('worlds').classList.remove('on');
+}
+function applyWorldPick(id, keep){
+  if (IS_PHONE){ remoteSetWorld(id, keep); return; }
+  setWorld(id, id === 'custom' ? customBg : null);
+  if (keep) for (const m of monsters) m.replace();
+  else clearWorld();
+  syncWorld();
+  toast(WORLDS[id].label);
+}
+
+/* пульт меняет мир через сервер: сам он ничего не рисует */
+async function remoteSetWorld(id, keep){
+  if (!isOwner){ toast('Менять мир может только тот, кто его создал', 4000); return; }
+  try{
+    const r = await api('/api/worlds/' + roomCode, {
+      method:'PATCH',
+      headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+      body: JSON.stringify({world: id, motion: ''}),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(()=>({}))).error || 'сервер отказал');
+    remoteWorldId = id;
+    if (!keep){
+      await api('/api/worlds/' + roomCode + '/monsters', {method:'DELETE', headers: authHeaders()});
+      remoteCount = 0;
+    }
+    toast(WORLDS[id].label);
+  }catch(e){ toast('Мир не сменился: ' + e.message, 4000); }
+}
+
+function closeMoveAsk(){
+  askWorld = null;
+  $('moveAsk').classList.remove('on');
+  $('worlds').classList.remove('on');   // мир выбран — сразу показываем его
+}
+$('moveYes').onclick = ()=>{ if (askWorld){ applyWorldPick(askWorld, true);  closeMoveAsk(); } };
+$('moveNo').onclick  = ()=>{ if (askWorld){ applyWorldPick(askWorld, false); closeMoveAsk(); } };
+$('moveCancel').onclick = ()=>{ askWorld = null; $('moveAsk').classList.remove('on'); };
+
+$('worldBtn').onclick = openWorlds;
+$('sndBtn').onclick = ()=>{ $('sndBtn').innerHTML = ico(SFX.toggle() ? 'vol' : 'volx'); };
+$('musBtn').onclick = ()=>{ $('musBtn').style.opacity = SFX.musicToggle() ? 1 : 0.35; };
+
+/* очистка экрана: первый тап взводит, второй — подтверждает */
+let clearArm = 0;
+$('clearBtn').onclick = ()=>{
+  if (!monsters.length){ toast('Экран и так пустой'); return; }
+  if (Date.now() - clearArm < 2500){
+    clearWorld();
+    $('clearBtn').innerHTML = ico('trash'); $('clearBtn').classList.remove('lit');
+    clearArm = 0;
+    toast('Экран очищен');
+  } else {
+    clearArm = Date.now();
+    $('clearBtn').innerHTML = ico('trash') + 'Убрать всех?'; $('clearBtn').classList.add('lit');
+    setTimeout(()=>{
+      if (Date.now() - clearArm >= 2400){
+        $('clearBtn').innerHTML = ico('trash'); $('clearBtn').classList.remove('lit');
+      }
+    }, 2600);
+  }
+};
+$('worldClose').onclick = ()=> $('worlds').classList.remove('on');
+/* ---------- свой мир ----------
+   Не просто «загрузить картинку»: родителю дают готовое задание для нейросети
+   (или инструкцию, как нарисовать фон с ребёнком) и выбор, как жители этого
+   мира двигаются. Дальше всё как с встроенными мирами: горизонт находится
+   автоматически, движение — из выбора. */
+let customMotion = 'hop', prevWorld = null;
+
+WORLDS.custom = {
+  label:'Свой мир', horizon:1/3, motion:'hop',
+  sky:['#1b1030','#3a1a5e','#6b3277'], stars:0, lights:[], hills:[],
+  ground:['#3a2a55','#4a3766','#5c4a7a'], haze:'120,100,150',
+  decor:'none', decorCol:'#000', shadow:'#141020', tag:'#ffe9a8', dust:'#e8e0f5',
+  rim:'#ffffff', flyBand:[0.10, 0.72],
+};
+
+function setCustomMotion(m){
+  customMotion = m;
+  $('mHop').classList.toggle('lit', m === 'hop');
+  $('mDrive').classList.toggle('lit', m === 'drive');
+  $('mFly').classList.toggle('lit', m === 'fly');
+}
+$('mHop').onclick   = ()=> setCustomMotion('hop');
+$('mDrive').onclick = ()=> setCustomMotion('drive');
+$('mFly').onclick   = ()=> setCustomMotion('fly');
+
+$('bgBtn').onclick = ()=> $('custom').classList.add('on');
+$('customCancel').onclick = ()=> $('custom').classList.remove('on');
+$('customPick').onclick = ()=> $('bgFile').click();
+
+$('copyPrompt').onclick = async ()=>{
+  const t = $('promptTxt');
+  t.select(); t.setSelectionRange(0, 99999);
+  try{
+    await navigator.clipboard.writeText(t.value);
+    toast('Задание скопировано — вставь его в нейросеть');
+  }catch(e){
+    document.execCommand && document.execCommand('copy');
+    toast('Выдели текст и скопируй вручную (Ctrl+C)');
+  }
+};
+
+$('bgClear').onclick = ()=>{
+  const back = (WORLD_ID === 'custom') ? (prevWorld || 'night') : WORLD_ID;
+  prevWorld = null;
+  setWorld(back, null);
+  buildWorldList();
+  syncWorld(true);
+};
+
+$('bgFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try{
+    // loadPicture возвращает уже декодированную картинку (Image или canvas) —
+    // заворачивать её обратно в Image нельзя: blob-адрес к этому моменту отозван
+    const pic = await loadPicture(f);
+    pic.__hz = detectHorizon(pic);
+    if (WORLD_ID !== 'custom') prevWorld = WORLD_ID;
+    const w = WORLDS.custom;
+    w.motion = customMotion;
+    // горизонт — как нашли на картинке; для полёта простор до самой земли
+    const hz = pic.__hz != null ? Math.min(0.9, Math.max(0.2, pic.__hz)) : 1/3;
+    w.horizon = hz;
+    w.flyBand = [0.12, 0.80];        // в своём мире летаем по всей картинке
+    setWorld('custom', pic);
+    buildWorldList();
+    $('custom').classList.remove('on');
+    $('worlds').classList.remove('on');
+    toast('Свой мир готов!');
+    uploadBg(pic, customMotion);
+  }catch(err){ toast('Не смог прочитать картинку: ' + err.message, 4000); }
+};
+
+/* =====================================================================
+   ЧАСТЬ 4. МИР НА СЕРВЕРЕ
+
+   Адреса:  /w/КОД      — экран мира (телевизор, планшет, ноутбук)
+            /w/КОД/add  — телефон: только съёмка и отправка
+   Мир живёт на сервере: монстрики сохраняются, экран можно закрыть и открыть
+   через неделю. Живые обновления — Server-Sent Events (одно направление,
+   встроено в браузер, переподключается само).
+   Ключ владельца лежит в localStorage того браузера, где мир создали.
+   ===================================================================== */
+
+const ROUTE = (()=>{
+  const m = /^\/w\/([A-Za-z0-9]+)(\/add)?\/?$/.exec(location.pathname);
+  const legacy = new URLSearchParams(location.search).get('code');
+  if (m) return {code: m[1].toUpperCase(), phone: !!m[2]};
+  if (legacy) return {code: legacy.toUpperCase(), phone: true};
+  return {code: null, phone: false};
+})();
+const IS_PHONE = ROUTE.phone;
+/* Ключ владельца едет в QR-коде после решётки: браузер его на сервер не
+   отправляет, а телефон, который поднесли к экрану, получает полное
+   управление. Кто дотянулся до телевизора — тот и хозяин: другой защиты
+   детской игрушке не надо. */
+const HASH_KEY = (()=>{ const m = /[#&]k=([A-Za-z0-9]+)/.exec(location.hash); return m ? m[1] : null; })();
+let roomCode = ROUTE.code, sse = null, worldKey = null, isOwner = false, worldInfo = null;
+let remoteWorldId = 'night', remoteCount = 0;
+const mode = () => IS_PHONE ? 'phone' : 'tv';
+
+const api = (path, opts) => fetch(path, Object.assign({cache:'no-store'}, opts||{}));
+const authHeaders = () => worldKey ? {'X-World-Key': worldKey} : {};
+
+/* миры, которые знает этот браузер: {code, name, key|null} */
+function savedWorlds(){ try { return JSON.parse(localStorage.getItem('kidstv.worlds') || '[]'); } catch(e){ return []; } }
+function rememberWorld(w){
+  const list = savedWorlds().filter(x => x.code !== w.code);
+  list.unshift(w);
+  try { localStorage.setItem('kidstv.worlds', JSON.stringify(list.slice(0, 30))); } catch(e){}
+}
+
+function showGone(msg){
+  $('sheetTitle').textContent = msg;
+  $('sheetSub').textContent = 'Вернись на главную и открой другой мир.';
+  $('preview').style.display = 'none';
+  $('nameIn').style.display = 'none';
+  [...document.querySelectorAll('#sheet .row .btn')].forEach(b => b.style.display = 'none');
+  const a = document.createElement('a');
+  a.href = '/'; a.className = 'btn'; a.textContent = 'На главную'; a.style.textDecoration = 'none';
+  document.querySelector('#sheet .row').appendChild(a);
+  sheet.classList.add('on');
+}
+
+/* ---------- сторона экрана ---------- */
+
+let lastWorldSig = '';
+async function applyWorldInfo(info, fromEvent){
+  worldInfo = info;
+  const sig = info.world + '|' + (info.bgUrl || '') + '|' + info.motion;
+  if (fromEvent && sig === lastWorldSig) return;
+  lastWorldSig = sig;
+  if (info.world === 'custom' && info.bgUrl){
+    const img = new Image();
+    img.onload = ()=>{
+      img.__hz = detectHorizon(img);
+      const w = WORLDS.custom;
+      w.motion = info.motion || 'hop';
+      const hz = img.__hz != null ? Math.min(0.9, Math.max(0.2, img.__hz)) : 1/3;
+      w.horizon = hz; w.flyBand = [0.12, 0.80];
+      customMotion = w.motion;
+      setWorld('custom', img);
+      for (const m of monsters) m.replace();
+    };
+    img.src = info.bgUrl;
+  } else {
+    const id = WORLDS[info.world] && info.world !== 'custom' ? info.world : 'night';
+    if (WORLD_ID !== id || customBg){ setWorld(id, null); for (const m of monsters) m.replace(); }
+  }
+}
+
+function spawnFromUrl(m){
+  if (m.id && monsters.some(x => x.id === m.id)) return;
+  const img = new Image();
+  img.onload = ()=> addMonster(img, m.name || '', m.id);
+  img.src = m.url;
+}
+
+async function initScreen(){
+  if (!roomCode){ location.replace('/'); return; }
+  const mine = savedWorlds().find(w => w.code === roomCode);
+  worldKey = mine && mine.key ? mine.key : null;
+  let r = null;
+  try { r = await api('/api/worlds/' + roomCode, {headers: authHeaders()}); } catch(e){}
+  if (!r || !r.ok){ showGone(r && r.status === 404 ? 'Мир не найден — проверь код' : 'Сервер не отвечает'); return; }
+  const info = await r.json();
+  isOwner = !!info.owner;
+  rememberWorld({code: roomCode, name: info.name, key: worldKey});
+  document.title = (info.name ? info.name + ' — ' : '') + 'WonderWorlds';
+  await applyWorldInfo(info, false);
+  // жители появляются по одному — парад, а не куча
+  let delay = 400;
+  for (const m of info.monsters){ setTimeout(()=> spawnFromUrl(m), delay); delay += 320; }
+  connectSse();
+  if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && !lanList.length){
+    try { lanList = (await (await api('/api/lan')).json()).lan || []; } catch(e){}
+  }
+  refreshTvQr();
+  if (!isOwner && roomCode !== 'DEMO1') toast('Ты гость этого мира: добавлять можно, менять фон и чистить — только создатель', 5000);
+}
+
+function connectSse(){
+  if (sse) sse.close();
+  sse = new EventSource('/api/worlds/' + roomCode + '/events');
+  sse.addEventListener('hello', ()=> { $('linkState').textContent = 'Готово — жду рисунки с телефона'; });
+  sse.addEventListener('monster', ev => {
+    const d = JSON.parse(ev.data);
+    spawnFromUrl(d);
+    $('link').classList.remove('on');
+    toast(d.name ? `Прилетел: ${d.name}` : 'Прилетел новый монстрик!');
+  });
+  sse.addEventListener('remove', ev => {
+    const {id} = JSON.parse(ev.data);
+    const i = monsters.findIndex(x => x.id === id);
+    if (i >= 0) monsters.splice(i, 1);
+    $('count').textContent = monsters.length;
+  });
+  sse.addEventListener('clear', ()=>{
+    monsters.length = 0; dust.length = 0; sparks.length = 0; portals.length = 0;
+    $('count').textContent = 0;
+  });
+  sse.addEventListener('cmd', ev => {
+    const {action} = JSON.parse(ev.data);
+    if (action === 'sound'){
+      const on = SFX.toggle();
+      $('sndBtn').innerHTML = ico(on ? 'vol' : 'volx');
+      toast(on ? 'Звук включён' : 'Звук выключен');
+    }
+    if (action === 'wake') wake();
+  });
+  sse.addEventListener('world', ev => applyWorldInfo(JSON.parse(ev.data), true));
+  sse.addEventListener('gone', ()=> showGone('Этот мир удалили'));
+  sse.onerror = ()=> { $('linkState').textContent = 'Связь оборвалась, восстанавливаю…'; };
+}
+
+/* монстрик, добавленный на самом экране, тоже идёт через сервер —
+   так он сохранится и появится на других экранах этого мира */
+async function publishMonster(spr, name){
+  try{
+    const r = await api('/api/worlds/' + roomCode + '/monsters', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({png: spriteToPng(spr), name}),
+    });
+    if (!r.ok) throw new Error('сервер отказал');
+    // появится по событию SSE; если поток отвалился — покажем сами
+    const d = await r.json();
+    setTimeout(()=>{ if (!monsters.some(x => x.id === d.id)) addMonster(spr, name, d.id); }, 1500);
+  }catch(e){
+    addMonster(spr, name, null);
+    toast('Показал здесь, но сохранить не вышло: ' + e.message, 4000);
+  }
+}
+
+async function clearWorld(){
+  monsters.length = 0; dust.length = 0; sparks.length = 0; portals.length = 0;
+  $('count').textContent = 0;
+  if (!isOwner){ toast('Очищено только на этом экране — чистить мир может создатель'); return; }
+  try { await api('/api/worlds/' + roomCode + '/monsters', {method:'DELETE', headers: authHeaders()}); }
+  catch(e){ toast('Не смог очистить на сервере'); }
+}
+
+async function syncWorld(clearBg){
+  if (!isOwner) return;
+  const body = clearBg ? {world: WORLD_ID, clearBg: true} : {world: WORLD_ID, motion: WORLD_ID === 'custom' ? customMotion : ''};
+  if (WORLD_ID === 'custom' && !clearBg) return;      // свой фон уходит через uploadBg
+  lastWorldSig = WORLD_ID + '||' + body.motion;
+  try { await api('/api/worlds/' + roomCode, {method:'PATCH', headers: Object.assign({'Content-Type':'application/json'}, authHeaders()), body: JSON.stringify(body)}); }
+  catch(e){ toast('Не смог сохранить мир на сервере'); }
+}
+
+async function uploadBg(pic, motion){
+  if (!isOwner){ toast('Фон виден только здесь — сохранять фон может создатель мира', 4000); return; }
+  const c = document.createElement('canvas');
+  const s = Math.min(1, 1920 / Math.max(pic.width, pic.height));
+  c.width = Math.round(pic.width*s); c.height = Math.round(pic.height*s);
+  c.getContext('2d').drawImage(pic, 0, 0, c.width, c.height);
+  lastWorldSig = 'custom|pending|' + motion;
+  try{
+    const r = await api('/api/worlds/' + roomCode + '/bg', {
+      method:'POST', headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+      body: JSON.stringify({image: c.toDataURL('image/jpeg', 0.86), motion}),
+    });
+    if (!r.ok) throw new Error('сервер отказал');
+    const info = await r.json(); lastWorldSig = info.world + '|' + info.bgUrl + '|' + info.motion;
+  }catch(e){ toast('Фон не сохранился на сервере: ' + e.message, 4000); }
+}
+
+/* ---------- код и QR ---------- */
+
+let lanList = [], lanPick = 0;
+function qrBase(){
+  const here = location.hostname;
+  const local = here === 'localhost' || here === '127.0.0.1' || here === '::1';
+  if (!local || !lanList.length) return location.origin;
+  return lanList[lanPick % lanList.length].url;
+}
+function drawQR(text, canvas){
+  const qr = qrcode(0, 'M'); qr.addData(text); qr.make();
+  const n = qr.getModuleCount(), S = 8, pad = 2, c = canvas || $('qr');
+  c.width = c.height = (n + pad*2) * S;
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.fillStyle = '#000';
+  for (let r=0;r<n;r++) for (let col=0;col<n;col++) if (qr.isDark(r, col)) x.fillRect((col+pad)*S, (r+pad)*S, S, S);
+}
+function phoneLink(){
+  const base = qrBase() + '/w/' + roomCode + '/add';
+  return (isOwner && worldKey) ? base + '#k=' + worldKey : base;
+}
+/* Постоянная плашка в углу телевизора — единственное «управление» на самом
+   экране. Всё остальное живёт на телефоне. */
+function refreshTvQr(){
+  if (IS_PHONE || !roomCode) return;
+  $('tvqrCode').textContent = roomCode;
+  drawQR(phoneLink(), $('tvqrCv'));
+}
+function refreshLink(){
+  $('linkUrl').textContent = phoneLink().split('#')[0];
+  drawQR(phoneLink());
+  refreshTvQr();
+  const many = lanList.length > 1 && qrBase() !== location.origin;
+  $('linkAddr').style.display = many ? '' : 'none';
+  if (many) $('linkAddr').textContent = `Сеть: ${lanList[lanPick % lanList.length].iface} · другой адрес`;
+}
+async function showLink(){
+  $('code').textContent = roomCode;
+  $('link').classList.add('on');
+  if (!lanList.length && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)){
+    try { lanList = (await (await api('/api/lan')).json()).lan || []; } catch(e){}
+  }
+  refreshLink();
+}
+$('tvBtn').onclick = showLink;
+$('tvqr').onclick = showLink;
+$('linkHide').onclick = ()=> $('link').classList.remove('on');
+$('linkAddr').onclick = ()=>{ lanPick++; refreshLink(); };
+$('linkCopy').onclick = async ()=>{
+  try { await navigator.clipboard.writeText(phoneLink()); toast('Ссылка скопирована'); }
+  catch(e){ toast('Скопируй адрес под кодом вручную'); }
+};
+
+/* ---------- сторона телефона ---------- */
+
+/* Телефон — это пульт. Телевизор далеко, тыкать в него нечем, поэтому всё
+   управление миром живёт здесь: рисунки, смена мира, звук, уборка. */
+async function initPhone(){
+  document.body.classList.add('phone');
+  $('phoneRoom').textContent = roomCode;
+
+  // ключ из QR — сохраняем и убираем из адресной строки
+  const mine = savedWorlds().find(w => w.code === roomCode);
+  worldKey = HASH_KEY || (mine && mine.key) || null;
+  if (HASH_KEY){
+    try { history.replaceState(null, '', location.pathname); } catch(e){}
+  }
+
+  $('shotBtn').onclick = openCamera;
+  $('drawBtn').onclick = openDraw;
+  $('worldBtnPhone').onclick = openWorlds;
+  $('sndBtnPhone').onclick = ()=> sendCmd('sound');
+  $('clearBtnPhone').onclick = ()=> phoneClear();
+
+  const check = async ()=>{
+    try{
+      const r = await api('/api/worlds/' + roomCode, {headers: authHeaders()});
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'нет мира');
+      isOwner = !!j.owner;
+      remoteWorldId = j.world;
+      remoteCount = (j.monsters || []).length;
+      if (worldKey) rememberWorld({code: roomCode, name: j.name, key: worldKey});
+      $('phoneState').textContent = j.screens ? '● экран на связи' : '○ экран пока не открыт';
+      $('phoneState').style.color = j.screens ? '#7ee787' : '#ffb86b';
+      const label = (WORLDS[j.world] && WORLDS[j.world].label) || 'Свой мир';
+      $('phoneWorld').textContent = `${label} · жителей: ${remoteCount}` + (isOwner ? '' : ' · ты гость');
+      $('worldBtnPhone').style.opacity = isOwner ? 1 : .45;
+      $('clearBtnPhone').style.opacity = isOwner ? 1 : .45;
+    }catch(e){
+      $('phoneState').textContent = '✕ ' + e.message;
+      $('phoneState').style.color = '#ff7b7b';
+    }
+  };
+  check(); setInterval(check, 8000);
+}
+
+/* мелкие команды экрану: звук и прочее, что нажимают с дивана */
+async function sendCmd(action){
+  try{
+    const r = await api('/api/worlds/' + roomCode + '/cmd', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action}),
+    });
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(j.error || 'сервер отказал');
+    if (!j.delivered){ toast('Экран не открыт — некому слушать'); return; }
+    if (action === 'sound'){
+      const lit = $('sndBtnPhone').classList.toggle('lit');
+      toast(lit ? 'Звук выключен' : 'Звук включён');
+      $('sndBtnPhone').innerHTML = ico(lit ? 'volx' : 'vol') + 'Звук';
+    }
+  }catch(e){ toast('Не дошло: ' + e.message, 4000); }
+}
+
+/* уборка с пульта: первый тап взводит, второй подтверждает */
+let phoneClearArm = 0;
+async function phoneClear(){
+  const b = $('clearBtnPhone');
+  if (!isOwner){ toast('Убирать может только тот, кто создал мир', 4000); return; }
+  if (Date.now() - phoneClearArm > 2500){
+    phoneClearArm = Date.now();
+    b.classList.add('lit'); b.innerHTML = ico('trash') + 'Точно убрать всех?';
+    setTimeout(()=>{
+      if (Date.now() - phoneClearArm >= 2400){
+        b.classList.remove('lit'); b.innerHTML = ico('trash') + 'Убрать всех с экрана';
+      }
+    }, 2600);
+    return;
+  }
+  phoneClearArm = 0;
+  b.classList.remove('lit'); b.innerHTML = ico('trash') + 'Убрать всех с экрана';
+  try{
+    const r = await api('/api/worlds/' + roomCode + '/monsters', {method:'DELETE', headers: authHeaders()});
+    if (!r.ok) throw new Error('сервер отказал');
+    remoteCount = 0;
+    toast('Экран очищен');
+  }catch(e){ toast('Не вышло убрать: ' + e.message, 4000); }
+}
+
+/* Живая камера с рамкой — только когда браузер разрешает (HTTPS).
+   Иначе честно открываем системную камеру через выбор файла. */
+let camStream = null;
+async function openCamera(){
+  const can = window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+  if (!can){ $('file').click(); return; }
+  try{
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: {ideal:'environment'}, width:{ideal:2560}, height:{ideal:1920}}, audio:false });
+  }catch(e){ $('file').click(); return; }
+  const v = $('camVideo'); v.srcObject = camStream;
+  $('cam').classList.add('on');
+}
+function closeCamera(){
+  if (camStream){ camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  $('camVideo').srcObject = null;
+  $('cam').classList.remove('on');
+}
+$('camClose').onclick = closeCamera;
+$('camGallery').onclick = ()=>{ closeCamera(); $('file').removeAttribute('capture'); $('file').click(); };
+$('camShot').onclick = ()=>{
+  const v = $('camVideo');
+  if (!v.videoWidth){ toast('Камера ещё не готова'); return; }
+  const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  closeCamera();
+  c.toBlob(b => handleFile(new File([b], 'shot.jpg', {type:'image/jpeg'})), 'image/jpeg', 0.92);
+};
+
+function spriteToPng(spr, maxSide=700){
+  const s = Math.min(1, maxSide / Math.max(spr.width, spr.height));
+  if (s === 1) return spr.toDataURL('image/png');
+  const c = document.createElement('canvas');
+  c.width = Math.round(spr.width*s); c.height = Math.round(spr.height*s);
+  c.getContext('2d').drawImage(spr, 0, 0, c.width, c.height);
+  return c.toDataURL('image/png');
+}
+
+async function sendToScreen(spr, name){
+  showBusy('Отправляю на экран…', 'Секундочку');
+  try{
+    const r = await api('/api/worlds/' + roomCode + '/monsters', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({png: spriteToPng(spr), name}),
+    });
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(j.error || ('ошибка ' + r.status));
+    hideBusy();
+    remoteCount++;
+    $('phoneSent').textContent = j.delivered ? 'Отправлено! Смотри на экран' : 'Сохранено! Появится, когда откроют экран';
+    $('phoneSent').classList.add('on');
+    setTimeout(()=> $('phoneSent').classList.remove('on'), 2000);
+  }catch(e){ hideBusy(); toast('Не отправилось: ' + e.message, 5000); }
+}
+
+/* ---------- галерея готовых персонажей ----------
+   Двойное назначение: «добавить готового» для тех, кому лень рисовать, и
+   «пример, чтобы срисовать» для тех, кто не может придумать. Наборы лежат
+   в packs/, список — packs/index.json. */
+let galIndex = null, galTab = null, galPick = null;
+const GAL_DEFAULT = {night:'monsters', farm:'farm', track:'cars', sky:'birds', custom:'monsters'};
+
+async function openGallery(){
+  if (!galIndex){
+    try { galIndex = await (await api('/packs/index.json')).json(); }
+    catch(e){ toast('Наборы не загрузились'); return; }
+  }
+  galTab = galTab || GAL_DEFAULT[IS_PHONE ? remoteWorldId : WORLD_ID] || 'monsters';
+  renderGallery();
+  $('gallery').classList.add('on');
+}
+function renderGallery(){
+  const tabs = $('galTabs'); tabs.innerHTML = '';
+  for (const [key, pack] of Object.entries(galIndex.packs)){
+    const b = document.createElement('button');
+    b.textContent = pack.title; b.className = key === galTab ? 'lit' : '';
+    b.onclick = ()=>{ galTab = key; renderGallery(); };
+    tabs.appendChild(b);
+  }
+  const grid = $('galGrid'); grid.innerHTML = '';
+  for (const url of galIndex.packs[galTab].items){
+    const b = document.createElement('button');
+    const img = document.createElement('img'); img.src = url; img.loading = 'lazy';
+    b.appendChild(img);
+    b.onclick = ()=>{ galPick = url; $('galBigImg').src = url; $('galBig').classList.add('on'); };
+    grid.appendChild(b);
+  }
+}
+async function addFromGallery(){
+  if (!galPick) return;
+  const img = new Image();
+  img.onload = ()=>{
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    c.getContext('2d').drawImage(img, 0, 0);
+    $('galBig').classList.remove('on'); $('gallery').classList.remove('on');
+    mode() === 'phone' ? sendToScreen(c, '') : publishMonster(c, '');
+  };
+  img.src = galPick;
+}
+$('galBtn').onclick = openGallery;
+$('galBtnPhone').onclick = openGallery;
+$('galClose').onclick = ()=> $('gallery').classList.remove('on');
+$('galBack').onclick = ()=> $('galBig').classList.remove('on');
+$('galAdd').onclick = addFromGallery;
+
+/* ---------- реквизит из PNG вместо процедурных овалов ---------- */
+const propImgs = {};
+function propSet(world){
+  if (!galIndex || !galIndex.props || !galIndex.props[world]) return null;
+  if (!propImgs[world]){
+    propImgs[world] = galIndex.props[world].map(u => { const i = new Image(); i.src = u; return i; });
+  }
+  return propImgs[world];
+}
+api('/packs/index.json').then(r => r.json()).then(j => { galIndex = j; makeProps(); }).catch(()=>{});
+
+if (IS_PHONE) initPhone(); else initScreen();
+
+/* Панель управления по умолчанию спрятана: на телевизоре ей делать нечего,
+   пультом там служит телефон. Стоит поводить мышью или нажать клавишу —
+   значит, за экраном сидит человек с компьютером, и панель выезжает.
+   Через 8 секунд покоя она снова уходит. Открытые окна не прячем. */
+const UI_OPEN = ['sheet','worlds','link','custom','moveAsk','lasso','gallery','galBig','draw','busy'];
+let idleT = null;
+function armIdle(){
+  clearTimeout(idleT);
+  idleT = setTimeout(()=>{
+    if (UI_OPEN.some(id => $(id).classList.contains('on'))) return armIdle();
+    document.body.classList.remove('desk');
+  }, 8000);
+}
+function wake(){ document.body.classList.add('desk'); armIdle(); }
+if (!IS_PHONE){
+  document.body.classList.add('tv');
+  ['mousemove','pointerdown','keydown','touchstart'].forEach(ev => addEventListener(ev, wake, {passive:true}));
+}
+
+/* PWA: оболочка кешируется, миры всегда из сети */
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+
+/* иконки на кнопки: svg + текст, который уже в разметке */
+for (const [id, n] of [['addBtn','plus'],['tvBtn','tv'],['worldBtn','globe'],
+  ['goBtn','send'],['rotBtn','rotcw'],['lassoBtn','cut'],['lassoOk','check'],
+  ['lassoBgBtn','image'],['lassoRedo','rotccw'],['moveYes','bag'],['moveNo','trash'],
+  ['shotBtn','camera'],['bgBtn','image'],['galBtn','image'],['galBtnPhone','image'],
+  ['drawBtn','pen'],['worldBtnPhone','globe'],['sndBtnPhone','vol'],['clearBtnPhone','trash'],
+  ['drawGo','send'],['drawUndo','rotccw'],['drawWipe','trash'],['drawClose','x']])
+  $(id).innerHTML = ico(n) + $(id).textContent;
+$('sndBtn').innerHTML = ico('vol');
+$('musBtn').innerHTML = ico('music');
+$('clearBtn').innerHTML = ico('trash');
+$('moveAskIcon').innerHTML = ico('bag');
+
+setWorld(WORLD_ID, null);
+resize();
+setWorld(WORLD_ID, null);
+requestAnimationFrame(frame);
+/* Плашка «Включить звук»: браузеры не дают автовоспроизведение без действия
+   пользователя, а на телевизоре тапнуть нечем — нужна видимая кнопка,
+   по которой можно кликнуть мышью или выбрать пультом. */
+if (!IS_PHONE){
+  document.body.classList.add('mute');
+  $('unmute').onclick = ()=> SFX.unlock();
+  setInterval(()=> document.body.classList.toggle('mute', SFX._dbg().state !== 'running'), 1000);
+}
+</script>
+</body>
+</html>

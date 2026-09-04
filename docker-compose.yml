@@ -1,0 +1,14 @@
+services:
+  kidstv:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+    environment:
+      - PORT=8123
+      - DATA_DIR=/data
+    volumes:
+      - kidstv-data:/data
+
+volumes:
+  kidstv-data:

@@ -1,0 +1,17 @@
+{
+  "name": "WonderWorlds",
+  "short_name": "WonderWorlds",
+  "description": "Нарисуй монстрика, сфоткай телефоном — и он оживёт на большом экране.",
+  "lang": "ru",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#150b2e",
+  "theme_color": "#150b2e",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

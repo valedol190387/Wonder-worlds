@@ -1,0 +1,85 @@
+{
+ "packs": {
+  "monsters": {
+   "title": "Монстрики",
+   "items": [
+    "/packs/monsters/1.png?v=f98c8558",
+    "/packs/monsters/2.png?v=1d8d1c8c",
+    "/packs/monsters/3.png?v=ffa94b85",
+    "/packs/monsters/4.png?v=57d9b4fd",
+    "/packs/monsters/5.png?v=27adb595",
+    "/packs/monsters/6.png?v=9d2f4eec",
+    "/packs/monsters/7.png?v=3182a39b",
+    "/packs/monsters/8.png?v=ffa5b6bd"
+   ]
+  },
+  "farm": {
+   "title": "Ферма",
+   "items": [
+    "/packs/farm/1.png?v=103a91a8",
+    "/packs/farm/2.png?v=d15c43d5",
+    "/packs/farm/3.png?v=7eb7a766",
+    "/packs/farm/4.png?v=b3127c23",
+    "/packs/farm/5.png?v=53ffc10b",
+    "/packs/farm/6.png?v=7a97c1bb",
+    "/packs/farm/7.png?v=87177ec9",
+    "/packs/farm/8.png?v=d5777233"
+   ]
+  },
+  "cars": {
+   "title": "Машинки",
+   "items": [
+    "/packs/cars/1.png?v=86eab6dc",
+    "/packs/cars/2.png?v=b934be0a",
+    "/packs/cars/3.png?v=9c99a247",
+    "/packs/cars/4.png?v=dea72c87",
+    "/packs/cars/5.png?v=d26b31eb",
+    "/packs/cars/6.png?v=4ec76bd3",
+    "/packs/cars/7.png?v=75a2ae94",
+    "/packs/cars/8.png?v=909d624e"
+   ]
+  },
+  "birds": {
+   "title": "Птички и летуны",
+   "items": [
+    "/packs/birds/1.png?v=32981713",
+    "/packs/birds/2.png?v=68789f8b",
+    "/packs/birds/3.png?v=7f74c9c1",
+    "/packs/birds/4.png?v=56e1f11f",
+    "/packs/birds/5.png?v=f156b0b3",
+    "/packs/birds/6.png?v=47bb6875",
+    "/packs/birds/7.png?v=f9bfb853",
+    "/packs/birds/8.png?v=8eafcb40"
+   ]
+  }
+ },
+ "props": {
+  "night": [
+   "/packs/props/night/1.png?v=d90bcc91",
+   "/packs/props/night/2.png?v=2dbee06c",
+   "/packs/props/night/3.png?v=4c42afcd",
+   "/packs/props/night/4.png?v=ac424d21",
+   "/packs/props/night/5.png?v=b50d010f"
+  ],
+  "farm": [
+   "/packs/props/farm/1.png?v=50fdbc1a",
+   "/packs/props/farm/2.png?v=54269b6c",
+   "/packs/props/farm/3.png?v=8be45985",
+   "/packs/props/farm/4.png?v=777b1d71",
+   "/packs/props/farm/5.png?v=55695903",
+   "/packs/props/farm/6.png?v=932a631a",
+   "/packs/props/farm/7.png?v=c5ac54b4",
+   "/packs/props/farm/8.png?v=1c724a44"
+  ],
+  "track": [
+   "/packs/props/track/1.png?v=ed62c79f",
+   "/packs/props/track/2.png?v=8528decd",
+   "/packs/props/track/3.png?v=dc9672cc",
+   "/packs/props/track/4.png?v=ea651e1b",
+   "/packs/props/track/5.png?v=cfa0fece",
+   "/packs/props/track/6.png?v=d74f8908",
+   "/packs/props/track/7.png?v=d6e3ea78",
+   "/packs/props/track/8.png?v=82bae18e"
+  ]
+ }
+}
