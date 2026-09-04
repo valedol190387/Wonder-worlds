@@ -1,4 +1,4 @@
-# Планета монстриков — один процесс Node без зависимостей.
+# WonderWorlds — один процесс Node без зависимостей.
 # node:sqlite нужен Node 22.13+ (в 22-alpine он есть).
 FROM node:22-alpine
 

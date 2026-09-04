@@ -118,6 +118,16 @@ function canPost(ip){
 }
 setInterval(()=>{ const t = now(); for (const [k,v] of monLog) if (!v.some(x => t-x < 60e3)) monLog.delete(k); }, 300e3).unref();
 
+/* Команды пульта (звук и прочее) считаем отдельно от рисунков: ребёнок,
+   тыкающий в «Звук», не должен перекрыть себе отправку монстрика. */
+const cmdLog = new Map();
+function canCmd(ip){
+  const t = now(), arr = (cmdLog.get(ip) || []).filter(x => t - x < 60e3);
+  if (arr.length >= 60) return false;
+  arr.push(t); cmdLog.set(ip, arr); return true;
+}
+setInterval(()=>{ const t = now(); for (const [k,v] of cmdLog) if (!v.some(x => t-x < 60e3)) cmdLog.delete(k); }, 300e3).unref();
+
 /* простейший лимит: сколько миров создал один IP за час */
 const createLog = new Map();
 function canCreate(ip){
@@ -315,7 +325,7 @@ async function api(req, res, u){
   //  Телефон рядом с человеком, а телевизор — далеко: звук и прочие мелочи
   //  жмутся на телефоне, сюда приходит команда и уходит в поток экрана.
   if (sub === '/cmd' && req.method === 'POST'){
-    if (!canPost(ip)) return json(res, 429, {error:'слишком часто — подожди минутку'});
+    if (!canCmd(ip)) return json(res, 429, {error:'слишком часто — подожди минутку'});
     let body = {};
     try { body = JSON.parse((await readBody(req, 4*1024)).toString('utf8') || '{}'); } catch(e){}
     const action = String(body.action || '');
