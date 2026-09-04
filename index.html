@@ -74,8 +74,9 @@
   .codeRow input:focus{border-color:var(--accent)}
 
   /* миры */
-  .worlds{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
-  @media (max-width:900px){ .worlds{grid-template-columns:repeat(2,1fr)} }
+  .worlds{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+  @media (max-width:1100px){ .worlds{grid-template-columns:repeat(3,1fr)} }
+  @media (max-width:640px){ .worlds{grid-template-columns:repeat(2,1fr)} }
   .wcard{border-radius:18px;overflow:hidden;background:#1b1030;border:1px solid var(--line);
     text-decoration:none;color:#fff;display:block;transition:transform .15s}
   .wcard:hover{transform:translateY(-3px)}
@@ -123,6 +124,13 @@
     color:#fff;font-size:14px;font-weight:600;cursor:pointer;overflow:hidden;text-align:left}
   .pick button img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}
   .pick button span{display:block;padding:8px 10px}
+  /* «Свой фон» — карточка без картинки: пустой холст с плюсом */
+  .ownPic{aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;
+    border:2px dashed rgba(255,255,255,.22);border-radius:12px;margin:10px 10px 0;
+    background:rgba(255,255,255,.04)}
+  .wcard.own .ownPic{margin:12px 12px 0}
+  .ownPic svg{width:34px;height:34px;stroke:var(--accent);fill:none;stroke-width:2.4;stroke-linecap:round}
+  .pick button.own{background:rgba(255,255,255,.05);grid-column:1 / -1}
   .pick button:hover{border-color:rgba(255,210,63,.55)}
   .pick button:active{border-color:var(--accent);transform:scale(.97)}
   .row{display:flex;gap:10px;justify-content:flex-end}
@@ -176,8 +184,12 @@
       <a class="wcard" href="#create" data-w="farm"><img src="/img/world-farm.jpg?v=4" alt=""><b>Ферма</b><span>цветы, стог сена и бабочки</span></a>
       <a class="wcard" href="#create" data-w="sky"><img src="/img/world-sky.jpg?v=4" alt=""><b>Небо</b><span>для птичек, бабочек и всего летающего</span></a>
       <a class="wcard" href="#create" data-w="track"><img src="/img/world-track.jpg?v=4" alt=""><b>Автодром</b><span>нарисованные машинки правда едут</span></a>
+      <a class="wcard own" href="#create" data-w="custom">
+        <div class="ownPic"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+        <b>Свой фон</b><span>картинка от нейросети или нарисованная вместе с ребёнком</span>
+      </a>
     </div>
-    <p class="lead" style="margin-top:14px">А ещё можно загрузить свой фон — сгенерировать нейросетью или нарисовать вместе с ребёнком. Задание для нейросети уже внутри.</p>
+    <p class="lead" style="margin-top:14px">Готовое задание для нейросети лежит внутри — скопировал, вставил, получил картинку.</p>
   </section>
 
   <section>
@@ -216,6 +228,7 @@
       <button data-w="farm"><img src="/img/world-farm.jpg?v=4" alt=""><span>Ферма</span></button>
       <button data-w="sky"><img src="/img/world-sky.jpg?v=4" alt=""><span>Небо</span></button>
       <button data-w="track"><img src="/img/world-track.jpg?v=4" alt=""><span>Автодром</span></button>
+      <button data-w="custom" class="own"><div class="ownPic"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div><span>Свой фон</span></button>
     </div>
     <div class="row">
       <button class="btn ghost" id="cancelBtn">Отмена</button>
@@ -256,7 +269,7 @@ render();
 /* Создание мира — один тап по картинке мира, без промежуточных экранов.
    Имя не спрашиваем: лишний шаг ради строчки в списке, где и так виден код.
    Мир называется как сам мир, а отличить их можно по коду. */
-const WORLD_NAMES = {night:'Планета · ночь', farm:'Ферма', sky:'Небо', track:'Автодром'};
+const WORLD_NAMES = {night:'Планета · ночь', farm:'Ферма', sky:'Небо', track:'Автодром', custom:'Свой мир'};
 let creating = false;
 
 async function createWorld(world){
@@ -265,15 +278,27 @@ async function createWorld(world){
   toast('Создаю мир…', 20000);
   try{
     const r = await fetch('/api/worlds', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({name: WORLD_NAMES[world] || '', world})});
+      // «свой фон» — обычный мир, который сразу открывается с окном загрузки картинки
+      body: JSON.stringify({name: WORLD_NAMES[world] || '', world: world === 'custom' ? 'night' : world})});
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || 'ошибка ' + r.status);
     const list = savedWorlds().filter(x => x.code !== j.code);
     list.unshift({code: j.code, name: j.name, key: j.key, created: Date.now()});
     saveWorlds(list);
-    location.href = '/w/' + j.code;
+    location.href = '/w/' + j.code + (world === 'custom' ? '#bg' : '');
   }catch(e){ creating = false; toast('Не получилось: ' + e.message, 4000); }
 }
+
+/* Кнопка «назад» возвращает страницу из памяти браузера вместе со всем
+   состоянием — в том числе с поднятым флагом «уже создаю», из-за которого
+   миры переставали нажиматься до перезагрузки. Сбрасываем его на каждом
+   показе страницы и заодно освежаем список: мир мог появиться. */
+addEventListener('pageshow', ()=>{
+  creating = false;
+  $('toast').classList.remove('on');
+  $('newWorld').classList.remove('on');
+  render();
+});
 
 // карточки на странице — сразу создают мир, без окна
 document.querySelectorAll('.wcard[data-w]').forEach(a =>

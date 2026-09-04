@@ -120,7 +120,6 @@
   .tile.slim svg{width:22px;height:22px}
   .tile.lit{background:var(--accent);color:#2a1a00}
   #phoneWorld{font-size:13px;opacity:.55;margin:0}
-  body.phone #bgBtn,body.phone #bgClear{display:none}
 
   /* ---------- рисование пальцем ---------- */
   #draw{position:fixed;inset:0;z-index:32;display:none;flex-direction:column;gap:8px;
@@ -299,9 +298,12 @@
   #unmute{position:fixed;left:50%;transform:translateX(-50%);
     bottom:calc(96px + env(safe-area-inset-bottom));display:none;align-items:center;gap:10px;
     background:var(--accent);color:#2a1a00;border:0;border-radius:999px;
-    padding:16px 28px;font-size:18px;font-weight:800;cursor:pointer;z-index:28;
+    padding:16px 28px;font-size:18px;font-weight:800;cursor:pointer;z-index:8;
     box-shadow:0 8px 30px rgba(255,210,63,.35);animation:pulse 2s ease-in-out infinite}
   body.mute #unmute{display:flex}
+  /* Пока открыто любое окно, плашка не должна лезть поверх его кнопок:
+     она висит на месте, куда попадает нижний ряд «Выбрать / Отмена». */
+  body.uiopen #unmute{display:none}
   #unmute:focus-visible{outline:3px solid #fff}
   @keyframes pulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.05)}}
 
@@ -2914,6 +2916,22 @@ function applyWorldPick(id, keep){
   toast(WORLDS[id].label);
 }
 
+/* пульт убирает свой фон через сервер: своей копии картинки у него нет */
+async function remoteClearBg(){
+  if (!isOwner){ toast('Менять фон может только тот, кто создал мир', 4000); return; }
+  try{
+    const r = await api('/api/worlds/' + roomCode, {
+      method:'PATCH',
+      headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+      body: JSON.stringify({world: 'night', clearBg: true}),
+    });
+    if (!r.ok) throw new Error('сервер отказал');
+    remoteWorldId = 'night';
+    $('worlds').classList.remove('on');
+    toast('Свой фон убран');
+  }catch(e){ toast('Не вышло убрать фон: ' + e.message, 4000); }
+}
+
 /* пульт меняет мир через сервер: сам он ничего не рисует */
 async function remoteSetWorld(id, keep){
   if (!isOwner){ toast('Менять мир может только тот, кто его создал', 4000); return; }
@@ -3008,6 +3026,7 @@ $('copyPrompt').onclick = async ()=>{
 };
 
 $('bgClear').onclick = ()=>{
+  if (IS_PHONE){ remoteClearBg(); return; }
   const back = (WORLD_ID === 'custom') ? (prevWorld || 'night') : WORLD_ID;
   prevWorld = null;
   setWorld(back, null);
@@ -3018,6 +3037,19 @@ $('bgClear').onclick = ()=>{
 $('bgFile').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
+  if (IS_PHONE){
+    // пульт ничего не рисует: картинка уезжает на сервер, экран подхватит её сам
+    showBusy('Отправляю фон на экран…', 'Картинка большая, это чуть дольше');
+    try{
+      const pic = await loadPicture(f);
+      await uploadBg(pic, customMotion);
+      remoteWorldId = 'custom';
+      hideBusy();
+      $('custom').classList.remove('on'); $('worlds').classList.remove('on');
+      toast('Фон уехал на экран');
+    }catch(err){ hideBusy(); toast('Не смог прочитать картинку: ' + err.message, 4000); }
+    return;
+  }
   try{
     // loadPicture возвращает уже декодированную картинку (Image или canvas) —
     // заворачивать её обратно в Image нельзя: blob-адрес к этому моменту отозван
@@ -3491,6 +3523,13 @@ api('/packs/index.json').then(r => r.json()).then(j => { galIndex = j; makeProps
 
 if (IS_PHONE) initPhone(); else initScreen();
 
+/* С главной «Свой фон» приводит сюда с меткой #bg: человек уже сказал, чего
+   хочет, — открываем окно загрузки картинки сразу, без блужданий по меню. */
+if (!IS_PHONE && location.hash === '#bg'){
+  try { history.replaceState(null, '', location.pathname); } catch(e){}
+  setTimeout(()=>{ $('custom').classList.add('on'); wake(); }, 400);
+}
+
 /* Панель управления по умолчанию спрятана: на телевизоре ей делать нечего,
    пультом там служит телефон. Стоит поводить мышью или нажать клавишу —
    значит, за экраном сидит человек с компьютером, и панель выезжает.
@@ -3536,7 +3575,10 @@ requestAnimationFrame(frame);
 if (!IS_PHONE){
   document.body.classList.add('mute');
   $('unmute').onclick = ()=> SFX.unlock();
-  setInterval(()=> document.body.classList.toggle('mute', SFX._dbg().state !== 'running'), 1000);
+  setInterval(()=>{
+    document.body.classList.toggle('mute', SFX._dbg().state !== 'running');
+    document.body.classList.toggle('uiopen', UI_OPEN.some(id => $(id).classList.contains('on')));
+  }, 250);
 }
 </script>
 </body>
