@@ -2796,15 +2796,40 @@ const endStroke = ()=>{ dCur = null; };
 dcv.addEventListener('pointerup', endStroke);
 dcv.addEventListener('pointercancel', endStroke);
 
-/* Лист белый, значит фон — то, что тянется от краёв: та же «палочка», что и
-   для фотографий. Белое ВНУТРИ замкнутого контура остаётся — это заливка
-   мордочки, а не фон. */
+/* Фон нарисованного на устройстве — не «то, что похоже на соседа», а ровно
+   белый холст. Разница принципиальная: «палочка» шагает на соседа, пока цвет
+   меняется плавно, а у мазка на белом всегда найдётся мягкий пиксель
+   сглаживания — заливка проваливается внутрь, и мазок исчезает целиком.
+   Здесь фон определяется абсолютно: белый и связанный с краем. Мазок,
+   упёршийся в край холста, при этом остаётся — он не белый, а значит и не
+   начало заливки. Белое ВНУТРИ замкнутого контура тоже остаётся: это
+   закрашенная мордочка, а не фон. */
+function whiteBackground(rgb, w, h, lim=226){
+  const bg = new Uint8Array(w*h);
+  const q = new Int32Array(w*h); let head = 0, tail = 0;
+  const push = i => {
+    if (bg[i]) return;
+    if (Math.min(rgb[i*3], rgb[i*3+1], rgb[i*3+2]) < lim) return;   // краска — стоп
+    bg[i] = 1; q[tail++] = i;
+  };
+  for (let x=0;x<w;x++){ push(x); push((h-1)*w+x); }
+  for (let y=0;y<h;y++){ push(y*w); push(y*w+w-1); }
+  while (head < tail){
+    const i = q[head++], x = i%w, y = (i/w)|0;
+    if (x > 0)   push(i-1);
+    if (x < w-1) push(i+1);
+    if (y > 0)   push(i-w);
+    if (y < h-1) push(i+w);
+  }
+  return bg;
+}
+
 function drawToSprite(){
   const w = dcv.width, h = dcv.height;
   const d = dctx.getImageData(0, 0, w, h).data;
   const rgb = new Uint8ClampedArray(w*h*3);
   for (let i=0;i<w*h;i++){ rgb[i*3]=d[i*4]; rgb[i*3+1]=d[i*4+1]; rgb[i*3+2]=d[i*4+2]; }
-  const bg = borderBackground(rgb, w, h, 34);
+  const bg = whiteBackground(rgb, w, h);
   let x0=w, y0=h, x1=-1, y1=-1, n=0;
   for (let y=0;y<h;y++) for (let x=0;x<w;x++){
     if (bg[y*w+x]) continue;
