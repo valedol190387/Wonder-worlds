@@ -118,15 +118,13 @@
   .modal{background:#1b1030;border:1px solid var(--line);border-radius:22px;padding:22px;width:min(92vw,460px);margin:auto}
   .modal h3{margin:0 0 6px;font-size:21px}
   .modal p{margin:0 0 14px;opacity:.7;font-size:14px}
-  .modal input{width:100%;border:1px solid var(--line);background:rgba(255,255,255,.07);color:#fff;
-    border-radius:14px;padding:14px 16px;font-size:17px;outline:none;margin-bottom:14px}
-  .modal input:focus{border-color:var(--accent)}
   .pick{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px}
   .pick button{border:2px solid transparent;border-radius:14px;padding:0;background:rgba(255,255,255,.07);
     color:#fff;font-size:14px;font-weight:600;cursor:pointer;overflow:hidden;text-align:left}
   .pick button img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}
   .pick button span{display:block;padding:8px 10px}
-  .pick button.sel{border-color:var(--accent);background:rgba(255,210,63,.15)}
+  .pick button:hover{border-color:rgba(255,210,63,.55)}
+  .pick button:active{border-color:var(--accent);transform:scale(.97)}
   .row{display:flex;gap:10px;justify-content:flex-end}
   #toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:rgba(16,10,32,.9);
     border:1px solid var(--line);padding:11px 18px;border-radius:999px;font-size:14px;opacity:0;
@@ -138,7 +136,6 @@
 <div class="wrap">
   <header>
     <a class="logo" href="/"><img src="/icons/icon-192.png" alt="">Wonder<span>Worlds</span></a>
-    <a class="btn ghost" href="/w/DEMO1">Живой мир</a>
   </header>
 
   <div class="hero">
@@ -151,10 +148,6 @@
           <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Создать свой мир
         </button>
-        <a class="btn ghost" href="/w/DEMO1">
-          <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          Посмотреть, как это выглядит
-        </a>
       </div>
     </div>
   </div>
@@ -176,9 +169,10 @@
 
   <section>
     <h2>Четыре мира — и свой пятый</h2>
-    <p class="lead">В каждом жители двигаются по-своему: на планете и ферме прыгают, по автодрому ездят, в небе летают.</p>
+    <p class="lead">Нажми на любой — мир создастся сразу. В каждом жители двигаются по-своему:
+    на планете и ферме прыгают, по автодрому ездят, в небе летают.</p>
     <div class="worlds">
-      <a class="wcard" href="/w/DEMO1"><img src="/img/world-night.jpg?v=4" alt=""><b>Планета · ночь</b><span>две луны, светлячки и падающие звёзды</span></a>
+      <a class="wcard" href="#create" data-w="night"><img src="/img/world-night.jpg?v=4" alt=""><b>Планета · ночь</b><span>две луны, светлячки и падающие звёзды</span></a>
       <a class="wcard" href="#create" data-w="farm"><img src="/img/world-farm.jpg?v=4" alt=""><b>Ферма</b><span>цветы, стог сена и бабочки</span></a>
       <a class="wcard" href="#create" data-w="sky"><img src="/img/world-sky.jpg?v=4" alt=""><b>Небо</b><span>для птичек, бабочек и всего летающего</span></a>
       <a class="wcard" href="#create" data-w="track"><img src="/img/world-track.jpg?v=4" alt=""><b>Автодром</b><span>нарисованные машинки правда едут</span></a>
@@ -215,18 +209,16 @@
 
 <div id="newWorld">
   <div class="modal">
-    <h3>Новый мир</h3>
-    <p>Назови, чтобы отличать в списке — например, по имени ребёнка.</p>
-    <input id="nameIn" placeholder="Мир Маши" maxlength="40" autocomplete="off">
+    <h3>Выбери мир</h3>
+    <p>Нажми — и он сразу откроется на этом экране.</p>
     <div class="pick" id="pick">
-      <button data-w="night" class="sel"><img src="/img/world-night.jpg?v=4" alt=""><span>Планета · ночь</span></button>
+      <button data-w="night"><img src="/img/world-night.jpg?v=4" alt=""><span>Планета · ночь</span></button>
       <button data-w="farm"><img src="/img/world-farm.jpg?v=4" alt=""><span>Ферма</span></button>
       <button data-w="sky"><img src="/img/world-sky.jpg?v=4" alt=""><span>Небо</span></button>
       <button data-w="track"><img src="/img/world-track.jpg?v=4" alt=""><span>Автодром</span></button>
     </div>
     <div class="row">
       <button class="btn ghost" id="cancelBtn">Отмена</button>
-      <button class="btn" id="goBtn">Создать</button>
     </div>
   </div>
 </div>
@@ -261,36 +253,37 @@ function render(){
 }
 render();
 
-let pickWorld = 'night';
-function setPick(w){
-  pickWorld = w;
-  [...$('pick').children].forEach(x => x.classList.toggle('sel', x.dataset.w === w));
-}
-[...$('pick').children].forEach(b => b.onclick = ()=> setPick(b.dataset.w));
-function openCreate(w){
-  if (w) setPick(w);
-  $('newWorld').classList.add('on');
-  setTimeout(()=> $('nameIn').focus(), 50);
-}
-$('createBtn').onclick = ()=> openCreate();
-document.querySelectorAll('.wcard[data-w]').forEach(a => a.onclick = e => { e.preventDefault(); openCreate(a.dataset.w); });
-$('cancelBtn').onclick = ()=> $('newWorld').classList.remove('on');
-$('newWorld').addEventListener('click', e => { if (e.target === $('newWorld')) $('newWorld').classList.remove('on'); });
-addEventListener('keydown', e => { if (e.key === 'Escape') $('newWorld').classList.remove('on'); });
-$('nameIn').onkeydown = e => { if (e.key === 'Enter') $('goBtn').click(); };
-$('goBtn').onclick = async ()=>{
-  $('goBtn').disabled = true;
+/* Создание мира — один тап по картинке мира, без промежуточных экранов.
+   Имя не спрашиваем: лишний шаг ради строчки в списке, где и так виден код.
+   Мир называется как сам мир, а отличить их можно по коду. */
+const WORLD_NAMES = {night:'Планета · ночь', farm:'Ферма', sky:'Небо', track:'Автодром'};
+let creating = false;
+
+async function createWorld(world){
+  if (creating) return;                       // двойной тап не должен плодить миры
+  creating = true;
+  toast('Создаю мир…', 20000);
   try{
     const r = await fetch('/api/worlds', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({name: $('nameIn').value.trim(), world: pickWorld})});
+      body: JSON.stringify({name: WORLD_NAMES[world] || '', world})});
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || 'ошибка ' + r.status);
     const list = savedWorlds().filter(x => x.code !== j.code);
     list.unshift({code: j.code, name: j.name, key: j.key, created: Date.now()});
     saveWorlds(list);
     location.href = '/w/' + j.code;
-  }catch(e){ toast('Не получилось: ' + e.message, 4000); $('goBtn').disabled = false; }
-};
+  }catch(e){ creating = false; toast('Не получилось: ' + e.message, 4000); }
+}
+
+// карточки на странице — сразу создают мир, без окна
+document.querySelectorAll('.wcard[data-w]').forEach(a =>
+  a.onclick = e => { e.preventDefault(); createWorld(a.dataset.w); });
+// кнопка в шапке — окно с теми же четырьмя мирами, тап по любому и готово
+[...$('pick').children].forEach(b => b.onclick = ()=> createWorld(b.dataset.w));
+$('createBtn').onclick = ()=> $('newWorld').classList.add('on');
+$('cancelBtn').onclick = ()=> $('newWorld').classList.remove('on');
+$('newWorld').addEventListener('click', e => { if (e.target === $('newWorld')) $('newWorld').classList.remove('on'); });
+addEventListener('keydown', e => { if (e.key === 'Escape') $('newWorld').classList.remove('on'); });
 $('openForm').onsubmit = e => {
   e.preventDefault();
   const code = $('codeIn').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
