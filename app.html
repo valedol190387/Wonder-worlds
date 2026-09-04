@@ -2518,7 +2518,7 @@ function addMonster(spr, name, id){
 }
 
 /* --- загрузка файла --- */
-$('addBtn').onclick = ()=> $('file').click();
+$('addBtn').onclick = ()=>{ warmModel(); $('file').click(); };
 $('file').onchange = e => { const f = e.target.files[0]; if (f) handleFile(f); e.target.value=''; };
 
 addEventListener('dragover', e=>e.preventDefault());
@@ -3578,7 +3578,14 @@ async function phoneClear(){
 /* Живая камера с рамкой — только когда браузер разрешает (HTTPS).
    Иначе честно открываем системную камеру через выбор файла. */
 let camStream = null;
+/* Пока человек наводит камеру на лист, качаем модель фоном: к моменту
+   снимка она обычно уже готова, и «первый раз дольше» никто не замечает.
+   Раньше открытия камеры не трогаем — не жечь мобильный трафик тем, кто
+   зашёл посмотреть. */
+function warmModel(){ if (MODEL_ON) getModel().catch(()=>{}); }
+
 async function openCamera(){
+  warmModel();
   const can = window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
   if (!can){ $('file').click(); return; }
   try{
