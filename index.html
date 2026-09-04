@@ -35,8 +35,13 @@
   /* ---------- hero ---------- */
   .hero{position:relative;border-radius:28px;overflow:hidden;min-height:440px;display:flex;align-items:flex-end;
     background:#1b1030 url(/img/hero.jpg?v=4) center/cover no-repeat;box-shadow:0 30px 80px rgba(0,0,0,.5)}
-  .hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(21,11,46,.05) 30%,rgba(21,11,46,.92) 100%)}
-  .hero .in{position:relative;padding:40px 36px 34px;max-width:640px}
+  /* Затемнение под текстом. Оно рисуется последним, поэтому без z-index
+     ложилось ПОВЕРХ заголовка и кнопок: буквы блёкли, а клики уходили в
+     плёнку и до кнопки не доходили. Держим её строго под содержимым и
+     насквозь прозрачной для мыши. */
+  .hero::after{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(21,11,46,.05) 30%,rgba(21,11,46,.92) 100%)}
+  .hero .in{position:relative;z-index:1;padding:40px 36px 34px;max-width:640px}
   h1{margin:0 0 10px;font-size:clamp(34px,6.5vw,60px);line-height:1.02;letter-spacing:-.03em}
   h1 span{color:var(--accent)}
   .pitch{margin:0 0 22px;font-size:clamp(16px,2.2vw,19px);opacity:.9;max-width:46ch}
