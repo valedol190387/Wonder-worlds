@@ -329,8 +329,12 @@ async function api(req, res, u){
     let body = {};
     try { body = JSON.parse((await readBody(req, 4*1024)).toString('utf8') || '{}'); } catch(e){}
     const action = String(body.action || '');
-    if (!['sound','music','wake'].includes(action)) return json(res, 400, {error:'неизвестная команда'});
-    const delivered = broadcast(code, 'cmd', {action});
+    if (!['sound','music','wake','act'].includes(action)) return json(res, 400, {error:'неизвестная команда'});
+    // общее действие для всех монстриков: танцуют, прыгают, бегут, спят…
+    const kind = String(body.kind || '');
+    if (action === 'act' && !['dance','jump','run','sleep','scatter','parade'].includes(kind))
+      return json(res, 400, {error:'неизвестное действие'});
+    const delivered = broadcast(code, 'cmd', action === 'act' ? {action, kind} : {action});
     q.touch.run(now(), code);
     return json(res, 200, {ok:true, delivered});
   }

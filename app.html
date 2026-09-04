@@ -21,6 +21,9 @@
     --accent2: #ff5d8f;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  /* iOS игнорирует user-scalable=no; двойной тап по кнопке увеличивал страницу.
+     manipulation оставляет прокрутку и щипок, но отключает зум по двойному тапу. */
+  html,body,button,a,.tile,.btn,.wcard{touch-action:manipulation}
   html,body{margin:0;height:100%;overflow:hidden;background:#0b0616;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#fff}
   #world{display:block;width:100%;height:100%;touch-action:none}
@@ -149,6 +152,15 @@
   .tile.slim svg{width:22px;height:22px}
   .tile.lit{background:var(--accent);color:#2a1a00}
   #phoneWorld{font-size:13px;opacity:.55;margin:0}
+  /* Общие действия: жмёшь — делают все. Плитки мельче основных, чтобы
+     не спорить с «Сфоткать», но достаточно крупные для детского пальца. */
+  #phoneActsTitle{margin:10px 0 0;font-size:13px;opacity:.55}
+  #phoneActs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;max-width:430px}
+  #phoneActs .act{border:0;border-radius:16px;background:rgba(255,255,255,.1);color:#fff;
+    padding:13px 6px;font-size:14px;font-weight:700;cursor:pointer;transition:transform .12s,background .2s}
+  #phoneActs .act:active{transform:scale(.94)}
+  #phoneActs .act.lit{background:var(--accent);color:#2a1a00}
+  #phoneMid{overflow:auto;-webkit-overflow-scrolling:touch}
 
   /* ---------- рисование пальцем ---------- */
   #draw{position:fixed;inset:0;z-index:32;display:none;flex-direction:column;gap:8px;
@@ -159,7 +171,7 @@
     touch-action:none;display:block;box-shadow:0 8px 30px rgba(0,0,0,.4)}
   #drawPal{display:flex;gap:9px;justify-content:center;flex-wrap:wrap;padding:2px}
   .swatch{width:38px;height:38px;border-radius:50%;border:3px solid transparent;
-    cursor:pointer;padding:0;transition:transform .12s}
+    cursor:pointer;padding:0;transition:transform .12s;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25)}
   .swatch.sel{border-color:#fff;transform:scale(1.14)}
   /* толщина кисти и ластик — квадратные, чтобы не путались с кружками цветов */
   .sizeBtn{width:42px;height:42px;border-radius:13px;background:rgba(255,255,255,.12);border:0;
@@ -211,14 +223,18 @@
 
   /* ---------- выбор мира ---------- */
   #worlds{position:fixed;inset:0;background:rgba(6,3,14,.93);backdrop-filter:blur(14px);
-    display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;
-    padding:24px;z-index:20;text-align:center}
+    display:none;flex-direction:column;align-items:center;justify-content:flex-start;gap:18px;
+    padding:calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+    z-index:20;text-align:center;overflow:auto;-webkit-overflow-scrolling:touch}
+  #worlds>:first-child{margin-top:auto} #worlds>:last-child{margin-bottom:auto}
   #worlds.on{display:flex}
   #worlds h2{margin:0;font-size:23px;font-weight:800;letter-spacing:-.02em}
   #worlds .sub{margin:-10px 0 0;font-size:14px;opacity:.55}
   #custom{position:fixed;inset:0;background:rgba(6,3,14,.96);backdrop-filter:blur(12px);
-    display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;
-    padding:22px;z-index:27;text-align:center;overflow:auto}
+    display:none;flex-direction:column;align-items:center;justify-content:flex-start;gap:16px;
+    padding:calc(22px + env(safe-area-inset-top)) 22px calc(22px + env(safe-area-inset-bottom));
+    z-index:27;text-align:center;overflow:auto;-webkit-overflow-scrolling:touch}
+  #custom>:first-child{margin-top:auto} #custom>:last-child{margin-bottom:auto}
   #custom.on{display:flex}
   #custom h2{margin:0;font-size:23px;font-weight:800}
   #customBody{display:flex;flex-direction:column;gap:12px;align-items:center;
@@ -231,9 +247,17 @@
     font-size:12px;padding:10px;line-height:1.4}
   #motionRow .btn{padding:12px 20px;font-size:15px}
 
+  /* Прокручиваемые окна нельзя центрировать по вертикали: когда содержимое
+     выше экрана, верх уезжает за край и до него не доскроллить. Поэтому
+     контент прижат к верху, а по центру его ставит margin:auto первого
+     и последнего ребёнка — он работает только пока есть свободное место. */
   #gallery,#galBig{position:fixed;inset:0;background:rgba(6,3,14,.95);backdrop-filter:blur(12px);
-    display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;
-    padding:20px;z-index:26;text-align:center;overflow:auto}
+    display:none;flex-direction:column;align-items:center;justify-content:flex-start;gap:14px;
+    padding:calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));
+    z-index:26;text-align:center;overflow:auto;-webkit-overflow-scrolling:touch}
+  #gallery>:first-child,#galBig>:first-child{margin-top:auto}
+  #gallery>:last-child,#galBig>:last-child{margin-bottom:auto}
+  #galGrid button{flex:0 0 auto}
   #gallery.on,#galBig.on{display:flex}
   #gallery h2{margin:0;font-size:22px;font-weight:800}
   #gallery .sub,#galBig .sub{margin:0;font-size:13px;opacity:.6;max-width:44ch}
@@ -409,6 +433,15 @@
       <button class="tile" id="worldBtnPhone">Сменить мир</button>
       <button class="tile" id="sndBtnPhone">Звук</button>
       <button class="tile slim wide" id="clearBtnPhone">Убрать всех с экрана</button>
+    </div>
+    <p id="phoneActsTitle">Все монстрики сейчас:</p>
+    <div id="phoneActs">
+      <button class="act" data-kind="dance">Танцуют</button>
+      <button class="act" data-kind="jump">Прыгают</button>
+      <button class="act" data-kind="run">Бегут</button>
+      <button class="act" data-kind="sleep">Спят</button>
+      <button class="act" data-kind="scatter">Разбегаются</button>
+      <button class="act" data-kind="parade">Парад</button>
     </div>
   </div>
   <div id="phoneSent">Отправлено! Смотри на экран</div>
@@ -1077,12 +1110,72 @@ function extractInk(base){
     objs2 = r.objs; lab2 = r.lab;
     if (!objs2.length) return {ok:false, reason:'На снимке ничего не нашлось'};
   }
-  const sprites = objs2.slice(0, 8).map(o => makeSprite(rgb, mask, lab2, o, w, h));
+  const sprites = objs2.slice(0, 8).map(o => punchUp(makeSprite(rgb, mask, lab2, o, w, h)));
   return {ok:true, sheet, mask, rgb, w, h, sprites, foundPaper: base.foundPaper};
 }
 
 /* --- полный проход без модели (используется как запасной путь) --- */
 function extract(img){ return extractInk(extractSheet(img)); }
+
+/* ---------- «оживление» рисунка ----------
+   Бледный карандаш на экране теряется, особенно в толпе. Три вещи делают
+   из него «нарисованного» — как персонажей в готовых наборах:
+     1) контраст: чем бледнее рисунок в целом, тем сильнее тянем краску к
+        насыщенным цветам; яркий фломастер почти не трогаем;
+     2) насыщенность: карандашный серо-розовый становится розовым;
+     3) тёмная обводка по контуру — фирменный «фломастерный» край.
+   Белое внутри (мордочка, глаза) остаётся белым: тянем только то, что и
+   так темнее бумаги. */
+function punchUp(spr){
+  const w = spr.width, h = spr.height;
+  if (!w || !h) return spr;
+  const sx = spr.getContext('2d', {willReadFrequently:true});
+  const im = sx.getImageData(0, 0, w, h), d = im.data;
+
+  // насколько рисунок бледный: средняя «темнота» видимых точек
+  let sum = 0, n = 0;
+  for (let i=0;i<w*h;i++){
+    if (d[i*4+3] < 128) continue;
+    sum += 255 - Math.min(d[i*4], d[i*4+1], d[i*4+2]); n++;
+  }
+  if (!n) return spr;
+  const dark = sum / n;
+  const gain = Math.max(1, Math.min(2.4, 95 / Math.max(20, dark)));   // бледный -> до ×2.4
+  const sat  = 1.35;
+  for (let i=0;i<w*h;i++){
+    if (d[i*4+3] === 0) continue;
+    let r = d[i*4], g = d[i*4+1], b = d[i*4+2];
+    // контраст относительно белой бумаги
+    r = 255 - (255 - r) * gain; g = 255 - (255 - g) * gain; b = 255 - (255 - b) * gain;
+    // насыщенность вокруг серого
+    const l = 0.3*r + 0.59*g + 0.11*b;
+    r = l + (r - l) * sat; g = l + (g - l) * sat; b = l + (b - l) * sat;
+    d[i*4]   = r < 0 ? 0 : r > 255 ? 255 : r;
+    d[i*4+1] = g < 0 ? 0 : g > 255 ? 255 : g;
+    d[i*4+2] = b < 0 ? 0 : b > 255 ? 255 : b;
+  }
+  const body = document.createElement('canvas'); body.width = w; body.height = h;
+  body.getContext('2d').putImageData(im, 0, 0);
+
+  // обводка: силуэт, размноженный по кругу и залитый тёмным
+  const rw = Math.max(2, Math.min(6, Math.round(h * 0.012)));
+  const pad = rw + 2;
+  const out = document.createElement('canvas'); out.width = w + pad*2; out.height = h + pad*2;
+  const ox = out.getContext('2d');
+  const ring = document.createElement('canvas'); ring.width = out.width; ring.height = out.height;
+  const rx = ring.getContext('2d');
+  for (let a=0;a<16;a++){
+    const ang = a/16*6.283;
+    rx.drawImage(body, pad + Math.cos(ang)*rw, pad + Math.sin(ang)*rw);
+  }
+  rx.globalCompositeOperation = 'source-in';
+  rx.fillStyle = '#1e1230'; rx.fillRect(0, 0, ring.width, ring.height);
+  ox.globalAlpha = 0.9;
+  ox.drawImage(ring, 0, 0);
+  ox.globalAlpha = 1;
+  ox.drawImage(body, pad, pad);
+  return out;
+}
 
 
 /* =====================================================================
@@ -1997,7 +2090,15 @@ class Monster{
     this.bob = Math.random()*6.283;
     this.driftU = (Math.random()<0.5?-1:1) * (0.05 + Math.random()*0.11);
     this.driftY = (Math.random()*2-1) * 0.012;
+    this.say = null; this.sayT = 0;            // реплика над головой
+    this.crouch = 0;                            // замах: присел перед прыжком
     this.sync();
+  }
+
+  /* Короткая реплика над головой. Дети обожают, когда монстрик «говорит»,
+     а стоит это одну строчку текста. */
+  speak(text, dur = 1.6){
+    this.say = text; this.sayT = dur;
   }
 
   sync(){
@@ -2023,10 +2124,20 @@ class Monster{
     this.sync();
   }
 
+  /* Живое существо не взлетает из ниоткуда: сперва присело (замах), и лишь
+     потом оттолкнулось. Полторы десятых секунды — а прыжок читается совсем
+     иначе. Сам взлёт происходит в hop(), когда замах отработал. */
   jump(power=1){
+    if (this.crouch > 0) return;
+    this.crouch = 0.14;
+    this.crouchPower = power;
+    this.sy = 0.84; this.sx = 1.12;
+  }
+  launch(power=1, du){
     this.vz = (2.7 + Math.random()*0.9) * power;
-    this.du = (Math.random()*2-1) * 0.16;
-    this.dt = (Math.random()*2-1) * 0.16;
+    // du задан снаружи (бег, парад) — направление держим; иначе куда попало
+    this.du = du !== undefined ? du : (Math.random()*2-1) * 0.16;
+    this.dt = du !== undefined ? 0 : (Math.random()*2-1) * 0.16;
     if (this.du) this.dir = this.du > 0 ? 1 : -1;
     this.sy = 1.18; this.sx = 0.86;
   }
@@ -2034,8 +2145,14 @@ class Monster{
   update(dt, now){
     this.alpha = Math.min(1, this.alpha + dt*2.5);
     this.greetLock -= dt;
+    if (this.sayT > 0){ this.sayT -= dt; if (this.sayT <= 0) this.say = null; }
+    if (this.crouch > 0){
+      this.crouch -= dt;
+      if (this.crouch <= 0){ this.crouch = 0; this.launch(this.crouchPower || 1); }
+    }
     const mode = W().motion;
-    if (mode === 'drive') this.drive(dt);
+    if (mood.kind && mode === 'hop') this.act(dt, now);
+    else if (mode === 'drive') this.drive(dt);
     else if (mode === 'fly') this.fly(dt, now);
     else this.hop(dt);
     // Разворот не мгновенный: спрайт сжимается по X, проходит «ребро»
@@ -2087,9 +2204,64 @@ class Monster{
           this.jump();
           if (Math.random() < 0.4)
             this.driftT = (Math.random()<0.5?-1:1) * (0.006 + Math.random()*0.014);
+          if (Math.random() < 0.05) this.speak(['Хм…','Ля!','Оп!','Ага'][Math.random()*4|0], 1.2);
           this.cooldown = 1.0 + Math.random()*2.6;
         }
       }
+    }
+  }
+
+  /* Общее действие для всех: пришло с пульта, длится секунд десять.
+     Физика прыжка та же, что в hop(), меняется только «чего хочет» монстрик. */
+  act(dt, now){
+    const k = mood.kind, age = (now - mood.t0)/1000;
+    // гравитация и полёт — общие для всех действий
+    this.vz -= 11*dt; this.z += this.vz*dt;
+    if (this.z > 0){ this.u += this.du*dt; this.t += this.dt*dt; this.clamp(); return; }
+    if (this.vz < -1.2){
+      const p = Math.min(1, -this.vz/3.2);
+      this.sy = 1 - 0.34*p; this.sx = 1 + 0.34*p;
+      this.sync(); spawnDust(this.x, this.baseY, 4 + p*6, this.k);
+      if (k !== 'parade') SFX.land(p*0.6);
+    }
+    this.z = 0; this.vz = 0; this.du = 0; this.dt = 0;
+    this.cooldown -= dt;
+
+    if (k === 'dance'){
+      // общий бит на всех: каждые 0.32 с — качок вбок и смена «ноги»
+      const beat = Math.floor(now/320), side = beat % 2 ? 1 : -1;
+      if (beat !== this.lastBeat){
+        this.lastBeat = beat;
+        this.sx = 1.22; this.sy = 0.82;
+        this.dir = side * (this.phase > 3 ? -1 : 1);
+        if (beat % 4 === (this.phase > 3 ? 0 : 2)) this.launch(0.55);
+        if (Math.random() < 0.06) this.speak(['Ла-ла!','Уи!','♪'][Math.random()*3|0], 1.2);
+      }
+    } else if (k === 'jump'){
+      if (this.cooldown <= 0){ this.launch(1.35); this.cooldown = 0.55 + Math.random()*0.5; }
+    } else if (k === 'run'){
+      if (this.cooldown <= 0){
+        this.launch(0.5, this.dir * (0.55 + Math.random()*0.2));   // низкие частые прыжки вперёд
+        this.cooldown = 0.28 + Math.random()*0.12;
+      }
+    } else if (k === 'sleep'){
+      this.rest = 1;
+      this.sy += (0.93 - this.sy)*Math.min(1, dt*3);
+      if (this.cooldown <= 0){ this.speak('z-z-z', 2.2); this.cooldown = 2.5 + Math.random()*2; }
+    } else if (k === 'scatter'){
+      if (age < 0.5 && !this.scattered){
+        this.scattered = true;
+        this.dir = this.u < 0 ? -1 : 1;
+        this.launch(1.2, this.dir * 0.5);
+        this.speak(['Ой!','А-а-а!','Спрячусь!'][Math.random()*3|0], 1.4);
+      } else if (this.cooldown <= 0){
+        this.launch(0.7, this.dir * 0.3); this.cooldown = 0.6 + Math.random()*0.6;
+      }
+    } else if (k === 'parade'){
+      if (this.cooldown <= 0){ this.launch(0.45, 0.32); this.cooldown = 0.42; }
+      this.dir = 1;
+      // дошёл до правого края — появляется слева: колонна идёт по кругу
+      if (this.u >= maxU(this.t) - 0.001) this.u = -maxU(this.t);
     }
   }
 
@@ -2151,6 +2323,7 @@ class Monster{
 
   clamp(){
     const lim = maxU(this.t);
+    if (mood.kind === 'parade' && this.u > lim){ this.u = -lim; return; }
     if (this.u < -lim){ this.u = -lim; this.du = Math.abs(this.du); this.driftU = Math.abs(this.driftU); }
     if (this.u >  lim){ this.u =  lim; this.du = -Math.abs(this.du); this.driftU = -Math.abs(this.driftU); }
     if (this.t < T_MIN){ this.t = T_MIN; this.dt = Math.abs(this.dt); }
@@ -2199,6 +2372,31 @@ class Monster{
     }
     ctx.restore();
 
+    if (this.say){
+      const fs = Math.max(12, 30*this.k);
+      const pop = Math.min(1, (this.sayT > 1.3 ? (1.6 - this.sayT) * 5 : this.sayT * 3));
+      ctx.save();
+      ctx.globalAlpha = this.alpha * Math.max(0, Math.min(1, pop));
+      ctx.font = `800 ${fs}px -apple-system,sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const tw = ctx.measureText(this.say).width + fs*1.1, th = fs*1.7;
+      const bx = px + this.w*0.35*(this.face >= 0 ? 1 : -1), by = this.baseY - this.z*this.h - hh - th*0.8;
+      ctx.fillStyle = '#fff';
+      // roundRect есть не во всех телевизорных браузерах — рисуем дугами
+      const rr = th/2, x0 = bx - tw/2, y0 = by - th/2;
+      ctx.beginPath();
+      ctx.moveTo(x0 + rr, y0); ctx.lineTo(x0 + tw - rr, y0);
+      ctx.arc(x0 + tw - rr, y0 + rr, rr, -1.5708, 1.5708);
+      ctx.lineTo(x0 + rr, y0 + th);
+      ctx.arc(x0 + rr, y0 + rr, rr, 1.5708, 4.7124);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(bx - fs*0.3, by + th/2 - 1); ctx.lineTo(bx + fs*0.3, by + th/2 - 1);
+      ctx.lineTo(bx - (this.face >= 0 ? fs*0.5 : -fs*0.5), by + th/2 + fs*0.55); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#2a1a3a';
+      ctx.fillText(this.say, bx, by + 1);
+      ctx.restore();
+    }
+
     if (this.name){
       ctx.save();
       ctx.globalAlpha = this.alpha*0.85;
@@ -2209,6 +2407,39 @@ class Monster{
       ctx.fillStyle = w.tag;
       ctx.fillText(this.name, px, this.baseY + 22*this.k);
       ctx.restore();
+    }
+  }
+}
+
+/* ---------- личное пространство ----------
+   Без этого монстрики сбиваются в кучу: соседи прыгают к новичку, случайное
+   блуждание в тесной полосе глубины стягивает всех к центру, и бледные
+   рисунки в толпе вовсе не разглядеть. Стоящие слишком близко мягко
+   расходятся — по ширине и чуть-чуть по глубине. Это не физика столкновений,
+   а привычка держать дистанцию, как у людей в очереди. */
+function separate(dt){
+  const n = monsters.length;
+  if (n < 2 || !(VW > 0) || !(VH > 0)) return;   // до первой раскладки экрана размеров нет
+  const flying = W().motion === 'fly', driving = W().motion === 'drive';
+  for (let i=0;i<n;i++){
+    const a = monsters[i];
+    for (let j=i+1;j<n;j++){
+      const b = monsters[j];
+      const dx = (b.x - a.x) / VW, dy = (b.baseY - a.baseY) / VH;
+      const want = 0.11 * (a.k + b.k) * 0.5 + 0.03;       // полторы ширины тела
+      const d = Math.hypot(dx, dy*2.2);
+      if (d >= want) continue;
+      const push = (want - d) / want * dt * 1.4;            // плавно, без дёрганья
+      const sx = dx === 0 ? (i%2 ? 1 : -1) : Math.sign(dx);
+      // по ширине расходимся всегда, по глубине — только пешие
+      const ua = a.u - sx*push*0.6, ub = b.u + sx*push*0.6;
+      a.u = Math.max(-maxU(a.t), Math.min(maxU(a.t), ua));
+      b.u = Math.max(-maxU(b.t), Math.min(maxU(b.t), ub));
+      if (!flying && !driving){
+        const st = dy === 0 ? (i%2 ? 1 : -1) : Math.sign(dy);
+        a.t = Math.max(T_MIN, Math.min(1, a.t - st*push*0.12));
+        b.t = Math.max(T_MIN, Math.min(1, b.t + st*push*0.12));
+      }
     }
   }
 }
@@ -2229,7 +2460,9 @@ function socialize(dt){
       if (Math.hypot((a.x-b.x)/VW, (a.baseY-b.baseY)/VH*1.7) > 0.085) continue;
       if (flying){ a.vz = 1.6; b.vz = 1.6; } else { a.jump(1.25); b.jump(1.25); }
       a.dir = a.x < b.x ? 1 : -1; b.dir = -a.dir;
-      a.greetLock = b.greetLock = 4 + Math.random()*4;
+      a.greetLock = b.greetLock = 6 + Math.random()*6;
+      a.speak(['Привет!','Ты кто?','О!','Дружим?'][Math.random()*4|0]);
+      setTimeout(()=> b.speak(['Привет!','Я Бублик!','Ура!','Давай!'][Math.random()*4|0]), 500);
       SFX.greet();
       const mx = (a.x+b.x)/2, my = (a.baseY+b.baseY)/2 - Math.max(a.h,b.h)*0.55;
       for (let n=0;n<12;n++) sparks.push({
@@ -2248,6 +2481,39 @@ function spawnDust(x, y, n, k){
   });
 }
 function spawnPortal(x, y){ portals.push({x, y, t:0}); SFX.portal(); }
+
+/* ---------- общее действие ----------
+   Один ребёнок жмёт на пульте «танцуют» — и танцуют все. Своих монстров
+   в мире нет: телефонов много, а мир один, поэтому и действие общее. */
+const MOODS = {dance:'Танцуют!', jump:'Прыгают!', run:'Бегут!', sleep:'Спят…', scatter:'Разбегаются!', parade:'Парад!'};
+let mood = {kind:null, until:0, t0:0};
+function startMood(kind, dur = 11000){
+  if (!MOODS[kind]) return;
+  const now = performance.now();
+  mood = {kind, until: now + dur, t0: now};
+  for (const m of monsters){
+    m.scattered = false; m.lastBeat = -1; m.rest = 0;
+    m.cooldown = kind === 'jump' ? Math.random()*0.8 : Math.random()*0.4;   // волной, не строем
+    if (W().motion !== 'hop'){                 // машинкам и птичкам — хотя бы темп
+      if (kind === 'run')  m.speed *= 2.2, m.driftU *= 2.2;
+      if (kind === 'sleep') m.speed *= 0.15, m.driftU *= 0.15;
+      if (kind === 'parade'){ m.dir = 1; m.driftU = Math.abs(m.driftU); }
+    }
+  }
+  toast(MOODS[kind], 1800);
+  SFX.greet();
+}
+function endMood(){
+  const was = mood.kind;
+  mood = {kind:null, until:0, t0:0};
+  for (const m of monsters){
+    m.rest = 0; m.cooldown = 0.4 + Math.random()*1.5;
+    if (W().motion !== 'hop'){
+      if (was === 'run')  m.speed /= 2.2, m.driftU /= 2.2;
+      if (was === 'sleep') m.speed /= 0.15, m.driftU /= 0.15;
+    }
+  }
+}
 
 /* ---------- смена мира ---------- */
 function setWorld(id, bg){
@@ -2288,7 +2554,9 @@ function frame(now){
     }
 
   for (const m of monsters) m.update(dt, now);
+  separate(dt);
   socialize(dt);
+  if (mood.kind && now > mood.until) endMood();
   updateAmbient(dt, now);
 
   const useBg = !!(customBg || bgFor(WORLD_ID));
@@ -2550,7 +2818,7 @@ function lassoCut(){
     out.data[di+3] = a[y*sw+x] ? 255 : 0;
   }
   cx2.putImageData(out, 0, 0);
-  return softenEdge(c);
+  return punchUp(softenEdge(c));
 }
 
 $('lassoBtn').onclick = openLasso;
@@ -2592,10 +2860,11 @@ function addMonster(spr, name, id){
     for (const o of monsters){
       if (Math.abs(o.x - m.x) > VW*0.33 || o.z > 0.02) continue;
       o.jump(0.7 + Math.random()*0.4);
-      o.dir = m.x > o.x ? 1 : -1;     // после jump: он выбирает направление сам
-      o.du = Math.abs(o.du) * o.dir;  // и скачет к новичку, а не куда попало
-      o.greetLock = 3;
+      o.dir = m.x > o.x ? 1 : -1;     // оборачивается к новичку, но не бежит к нему:
+      o.greetLock = 3;                //  иначе вокруг каждого нового собиралась куча
+      if (Math.random() < 0.5) o.speak(['О!','Привет!','Новенький!'][Math.random()*3|0], 1.4);
     }
+  m.speak(['Я тут!','Привет!','Ура!'][Math.random()*3|0], 1.8);
   monsters.push(m);
   while (monsters.length > MAX_MONSTERS) monsters.shift();
   $('count').textContent = monsters.length;
@@ -2877,7 +3146,7 @@ function spritesFromAlpha(res, alpha){
   if (share < 0.004 || share > 0.75) return null;
   const {objs, lab} = rankObjects(mask, w, h, 0);
   if (!objs.length) return null;
-  const sprites = objs.slice(0, 8).map(o => makeSprite(rgb, mask, lab, o, w, h));
+  const sprites = objs.slice(0, 8).map(o => punchUp(makeSprite(rgb, mask, lab, o, w, h)));
   if (!sprites.length) return null;
   return Object.assign({}, res, {ok: true, mask, sprites, byModel: true});
 }
@@ -2926,7 +3195,7 @@ $('help').onclick = ()=> $('dbg').classList.toggle('on');
    списком, а не картинками: «шаг назад» — просто выкинуть последний
    и перерисовать, память телефона при этом не страдает. */
 const DRAW_COLORS = ['#141414','#e5322d','#ff8a1e','#ffd23f','#3fb950',
-                     '#2f7bff','#8b5cf6','#ff6ea9','#8b5a2b'];
+                     '#2f7bff','#8b5cf6','#ff6ea9','#8b5a2b','#ffffff'];
 const DRAW_SIZES  = [6, 14, 30];
 const dcv = $('drawCv'), dctx = dcv.getContext('2d', {willReadFrequently:true});
 let dStrokes = [], dCur = null, dColor = DRAW_COLORS[0], dSize = DRAW_SIZES[1],
@@ -3084,7 +3353,7 @@ function drawToSprite(){
     out.data[di+3] = bg[si] ? 0 : 255;
   }
   cx.putImageData(out, 0, 0);
-  return softenEdge(c);
+  return punchUp(softenEdge(c));
 }
 
 $('drawUndo').onclick  = ()=>{ dStrokes.pop(); redrawDraw(); };
@@ -3466,6 +3735,7 @@ function connectSse(){
       toast(on ? 'Звук включён' : 'Звук выключен');
     }
     if (action === 'wake') wake();
+    if (action === 'act') startMood(JSON.parse(ev.data).kind);
   });
   sse.addEventListener('world', ev => applyWorldInfo(JSON.parse(ev.data), true));
   sse.addEventListener('gone', ()=> showGone('Этот мир удалили'));
@@ -3604,6 +3874,12 @@ async function initPhone(){
   };
   $('worldBtnPhone').onclick = openWorlds;
   $('sndBtnPhone').onclick = ()=> sendCmd('sound');
+  document.querySelectorAll('#phoneActs .act').forEach(b => b.onclick = ()=>{
+    sendCmd('act', b.dataset.kind);
+    document.querySelectorAll('#phoneActs .act').forEach(x => x.classList.remove('lit'));
+    b.classList.add('lit');
+    setTimeout(()=> b.classList.remove('lit'), 11000);
+  });
   $('clearBtnPhone').onclick = ()=> phoneClear();
 
   const check = async ()=>{
@@ -3630,11 +3906,11 @@ async function initPhone(){
 }
 
 /* мелкие команды экрану: звук и прочее, что нажимают с дивана */
-async function sendCmd(action){
+async function sendCmd(action, kind){
   try{
     const r = await api('/api/worlds/' + roomCode + '/cmd', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({action}),
+      body: JSON.stringify(kind ? {action, kind} : {action}),
     });
     const j = await r.json().catch(()=>({}));
     if (!r.ok) throw new Error(j.error || 'сервер отказал');
@@ -3854,6 +4130,11 @@ if (!IS_PHONE){
   ['mousemove','pointerdown','keydown','touchstart'].forEach(ev => addEventListener(ev, wake, {passive:true}));
   addEventListener('resize', measureBar);
   measureBar();
+  // клавиши 1–6 — те же общие действия, что на пульте: удобно показывать с ноутбука
+  addEventListener('keydown', e => {
+    const k = ['dance','jump','run','sleep','scatter','parade'][+e.key - 1];
+    if (k && !e.metaKey && !e.ctrlKey && document.activeElement.tagName !== 'INPUT') startMood(k);
+  });
 }
 
 /* PWA: оболочка кешируется, миры всегда из сети */
