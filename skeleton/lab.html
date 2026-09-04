@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Полигон скелета</title>
+<style>
+  body{margin:0;background:#150b2e;color:#fff;font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:18px}
+  h1{margin:0 0 4px;font-size:22px}
+  .sub{opacity:.6;margin:0 0 16px;font-size:14px}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+  .card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:14px}
+  .btn{border:0;border-radius:999px;padding:12px 20px;font-size:15px;font-weight:700;background:#ffd23f;color:#2a1a00;cursor:pointer}
+  .btn.ghost{background:rgba(255,255,255,.13);color:#fff;font-weight:600}
+  .btn:disabled{opacity:.4;cursor:default}
+  #status{font-size:13px;opacity:.7;margin:8px 0 0;min-height:1.4em}
+  #rigBox{position:relative;display:inline-block;background:#fff;border-radius:12px;overflow:hidden}
+  #rigBox img{display:block;max-width:360px;height:auto}
+  #rigBox svg{position:absolute;inset:0;width:100%;height:100%}
+  .joint{fill:#ff5d8f;stroke:#fff;stroke-width:1.5}
+  .bone{stroke:#2f7bff;stroke-width:3;stroke-linecap:round;opacity:.85}
+  #motions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  #anims{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px}
+  .anim{background:linear-gradient(#3a2a55,#6b3277);border-radius:14px;padding:8px;text-align:center}
+  .anim canvas{display:block;width:240px;height:240px;image-rendering:auto}
+  .anim b{display:block;font-size:13px;margin-top:6px}
+  .anim small{opacity:.6;font-size:11px}
+  input[type=file]{color:#fff}
+  #log{font:11px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;opacity:.75;max-height:180px;overflow:auto;margin-top:12px}
+</style>
+
+<h1>Полигон скелета</h1>
+<p class="sub">Закинь рисунок с руками и ногами — детектор найдёт скелет, дальше по кнопке любое движение.</p>
+
+<div class="row">
+  <div class="card" style="min-width:300px">
+    <input type="file" id="file" accept="image/*">
+    <button class="btn" id="go" style="margin-left:8px">Найти скелет</button>
+    <p id="status"></p>
+    <div id="rigBox" style="display:none"><img id="rigImg" alt=""><svg id="rigSvg"></svg></div>
+    <div id="motions"></div>
+  </div>
+  <div class="card" style="flex:1;min-width:320px">
+    <b>Движения</b>
+    <div id="anims"></div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const log = m => { $('log').textContent = new Date().toTimeString().slice(0,8) + ' ' + m + '\n' + $('log').textContent; };
+let rigId = null, motions = {};
+
+fetch('/motions').then(r => r.json()).then(j => motions = j);
+fetch('/health').then(r => r.json()).then(j => log('служба: ok, детектор: ' + (j.torchserve ? 'на связи' : 'НЕ ОТВЕЧАЕТ')));
+
+$('go').onclick = async ()=>{
+  const f = $('file').files[0];
+  if (!f){ $('status').textContent = 'Выбери картинку'; return; }
+  $('go').disabled = true; $('status').textContent = 'Ищу скелет… (первый раз до минуты: модели грузятся)';
+  $('anims').innerHTML = ''; $('motions').innerHTML = '';
+  const fd = new FormData(); fd.append('image', f);
+  const t0 = performance.now();
+  try{
+    const r = await fetch('/rig', {method:'POST', body: fd});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    rigId = j.id;
+    $('status').textContent = `Скелет найден за ${j.seconds} с · суставов: ${j.skeleton.length}`;
+    log(`скелет ${j.id}: ${j.seconds} с, ${j.width}×${j.height}`);
+    showRig(j);
+    for (const [k, ru] of Object.entries(motions)){
+      const b = document.createElement('button'); b.className = 'btn ghost'; b.textContent = ru;
+      b.onclick = ()=> animate(k, ru, b);
+      $('motions').appendChild(b);
+    }
+  }catch(e){
+    $('status').textContent = 'Не вышло: ' + e.message;
+    log('ошибка: ' + e.message);
+  }
+  $('go').disabled = false;
+};
+
+function showRig(j){
+  const img = $('rigImg'); img.src = `/out/${j.id}/texture.png?` + Date.now();
+  img.onload = ()=>{
+    const svg = $('rigSvg'); svg.setAttribute('viewBox', `0 0 ${j.width} ${j.height}`);
+    const by = {}; for (const s of j.skeleton) by[s.name] = s;
+    let out = '';
+    for (const s of j.skeleton) if (s.parent && by[s.parent])
+      out += `<line class="bone" x1="${by[s.parent].loc[0]}" y1="${by[s.parent].loc[1]}" x2="${s.loc[0]}" y2="${s.loc[1]}"/>`;
+    for (const s of j.skeleton) out += `<circle class="joint" cx="${s.loc[0]}" cy="${s.loc[1]}" r="${Math.max(4, j.width*0.012)}"><title>${s.name}</title></circle>`;
+    svg.innerHTML = out;
+    $('rigBox').style.display = 'inline-block';
+  };
+}
+
+async function animate(k, ru, btn){
+  btn.disabled = true; btn.textContent = ru + '…';
+  const t0 = performance.now();
+  try{
+    const r = await fetch('/animate/' + rigId, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({motion: k})});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    log(`${k}: ${j.cached ? 'из кеша' : j.seconds + ' с'}, кадров ${j.meta.frames} из ${j.meta.source_frames}, ${j.meta.w}×${j.meta.h}`);
+    play(j, ru);
+  }catch(e){ log(k + ': ' + e.message); }
+  btn.disabled = false; btn.textContent = ru;
+}
+
+/* лист кадров играется на canvas — ровно так же будет играть мир на телевизоре */
+function play(j, ru){
+  const box = document.createElement('div'); box.className = 'anim';
+  const cv = document.createElement('canvas'); cv.width = 480; cv.height = 480;
+  box.appendChild(cv);
+  box.insertAdjacentHTML('beforeend', `<b>${ru}</b><small>${j.meta.frames} кадров · ${j.meta.fps} к/с</small>`);
+  $('anims').appendChild(box);
+  const img = new Image(); img.src = j.sheet + '?' + Date.now();
+  img.onload = ()=>{
+    const {frames, cols, w, h, fps} = j.meta, x = cv.getContext('2d');
+    const k = Math.min(440/w, 440/h);
+    let i = 0, last = 0;
+    (function tick(t){
+      if (t - last > 1000/fps){ last = t; i = (i+1) % frames; }
+      x.clearRect(0,0,480,480);
+      x.drawImage(img, (i%cols)*w, Math.floor(i/cols)*h, w, h, (480-w*k)/2, (480-h*k)/2, w*k, h*k);
+      requestAnimationFrame(tick);
+    })(0);
+  };
+}
+</script>
+</html>

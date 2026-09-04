@@ -1,0 +1,35 @@
+# Полигон скелетной анимации: два контейнера.
+#   torchserve — детектор фигуры и позер (Meta Animated Drawings, MIT)
+#   skeleton   — рендер по скелету + страница полигона на :8200
+services:
+  torchserve:
+    image: ad-torchserve
+    # Dockerfile Meta берётся прямо из их репозитория — свой не нужен
+    build:
+      context: https://github.com/facebookresearch/AnimatedDrawings.git#main:torchserve
+    restart: unless-stopped
+    # по умолчанию torchserve заводит воркер на каждое ядро, и на каждой
+    # модели по 12 копий torch — 4 ГБ кончались за минуту. Наш конфиг: один.
+    volumes:
+      - ./torchserve.properties:/home/torchserve/config.properties:ro
+    deploy:
+      resources:
+        limits:
+          memory: 6g
+
+  skeleton:
+    image: ad-skeleton
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8200:8200"
+    environment:
+      - TORCHSERVE=http://torchserve:8080
+      - OUT_DIR=/data/skeleton
+    volumes:
+      - skeleton-out:/data/skeleton
+    depends_on:
+      - torchserve
+
+volumes:
+  skeleton-out:
