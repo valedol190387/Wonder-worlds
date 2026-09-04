@@ -369,10 +369,12 @@ async function api(req, res, u){
 
 const MIME = {
   '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
+  '.mjs':'text/javascript; charset=utf-8',
   '.css':'text/css; charset=utf-8',   '.json':'application/json; charset=utf-8',
   '.webmanifest':'application/manifest+json; charset=utf-8',
   '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.png':'image/png', '.webp':'image/webp',
   '.svg':'image/svg+xml', '.wasm':'application/wasm', '.ico':'image/x-icon',
+  '.onnx':'application/octet-stream',
   '.md':'text/markdown; charset=utf-8', '.txt':'text/plain; charset=utf-8',
 };
 function sendFile(res, full, mime, cache){
@@ -397,7 +399,7 @@ function serveStatic(req, res, u){
   const ext = path.extname(full).toLowerCase();
   const cache = ext === '.html' ? 'no-cache'
               : p.endsWith('.json') ? 'no-cache'
-              : (p.startsWith('/vendor/') || p.startsWith('/bg/') || p.startsWith('/icons/') || p.startsWith('/img/')) ? 'public, max-age=604800'
+              : (p.startsWith('/vendor/') || p.startsWith('/bg/') || p.startsWith('/icons/') || p.startsWith('/img/') || p.startsWith('/models/')) ? 'public, max-age=604800'
               : 'public, max-age=3600';
   sendFile(res, full, MIME[ext] || 'application/octet-stream', cache);
 }

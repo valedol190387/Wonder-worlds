@@ -1,7 +1,7 @@
 /* Service worker: кешируем оболочку и тяжёлую статику (фоны, декодер HEIC),
    чтобы повторные открытия были мгновенными. HTML и API — всегда из сети:
    миры живут на сервере, устаревшую страницу показывать нельзя. */
-const VERSION = 'wonderworlds-v3';
+const VERSION = 'wonderworlds-v4';
 const SHELL = [
   '/', '/index.html', '/app.html', '/manifest.webmanifest',
   '/vendor/qrcode.js', '/vendor/libheif.js', '/vendor/libheif.wasm',

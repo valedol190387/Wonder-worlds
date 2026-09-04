@@ -838,9 +838,13 @@ function morph(src, w, h, dilate, r){
 }
 
 /* --- 4. кто здесь герой: эвристика без всякого ИИ --- */
-function rankObjects(mask, w, h){
-  const link = Math.max(2, Math.round(Math.min(w,h)*0.02));
-  const glued = morph(mask, w, h, 1, link);          // склеиваем близкие штрихи
+/* link — радиус склейки близких штрихов: отдельные линии рисунка должны
+   стать одним объектом. Ядро большое (2% листа), и стоит это две секунды,
+   поэтому маске от модели, где фигура уже цельная, склейка не нужна:
+   там передаём link = 0. */
+function rankObjects(mask, w, h, link){
+  if (link === undefined) link = Math.max(2, Math.round(Math.min(w,h)*0.02));
+  const glued = link > 0 ? morph(mask, w, h, 1, link) : mask;
   const {lab, stats} = labelComponents(glued, w, h);
 
   const cx = w/2, cy = h/2, diag = Math.hypot(w,h);
@@ -975,8 +979,11 @@ function borderBackground(rgb, w, h, tol=42){
   return bg;
 }
 
-/* --- полный проход --- */
-function extract(img){
+/* --- шаг 1: найти лист и выпрямить его ---
+   Отдельно от разбора краски: маску может дать и модель, а этот шаг нужен
+   в любом случае — без выпрямленного листа модель принимает за главный
+   объект саму бумагу и вырезает страницу. */
+function extractSheet(img){
   const id = toImageData(img, 1500);
   const paper = detectPaper(id);
   let sheet;
@@ -989,11 +996,7 @@ function extract(img){
   } else {
     sheet = toImageData(img, PROC_MAX);   // лист не нашли — берём кадр как есть
   }
-  const {score, norm, thr, w, h} = inkScore(sheet);
-  const mask = buildMask(score, w, h, thr);
-  const {objs, lab} = rankObjects(mask, w, h);
-  if (!objs.length) return {ok:false, reason:'На листе ничего не нашлось'};
-
+  const w = sheet.width, h = sheet.height;
   // Для цвета берём ОРИГИНАЛ листа, а не нормализованную версию: та существует
   // ради маски (убрать тень с бумаги), но фотографию она превращает в молоко.
   const rgb = new Uint8ClampedArray(w*h*3);
@@ -1002,6 +1005,16 @@ function extract(img){
     rgb[i*3+1] = sheet.data[i*4+1];
     rgb[i*3+2] = sheet.data[i*4+2];
   }
+  return {sheet, rgb, w, h, foundPaper: !!paper};
+}
+
+/* --- шаг 2: разобрать краску на листе (старый путь, он же запасной) --- */
+function extractInk(base){
+  const {sheet, rgb, w, h} = base;
+  const {score, thr} = inkScore(sheet);
+  const mask = buildMask(score, w, h, thr);
+  const {objs, lab} = rankObjects(mask, w, h);
+  if (!objs.length) return {ok:false, reason:'На листе ничего не нашлось'};
 
   /* Объект — это всё, что НЕ фон. «Чернильная» маска хороша для рисунков,
      но на фотографии светлая кожа выглядит для неё бумагой — получаются дыры.
@@ -1025,8 +1038,11 @@ function extract(img){
     if (!objs2.length) return {ok:false, reason:'На снимке ничего не нашлось'};
   }
   const sprites = objs2.slice(0, 8).map(o => makeSprite(rgb, mask, lab2, o, w, h));
-  return {ok:true, sheet, mask, rgb, w, h, sprites, foundPaper: !!paper};
+  return {ok:true, sheet, mask, rgb, w, h, sprites, foundPaper: base.foundPaper};
 }
+
+/* --- полный проход без модели (используется как запасной путь) --- */
+function extract(img){ return extractInk(extractSheet(img)); }
 
 
 /* =====================================================================
@@ -2659,8 +2675,9 @@ async function handleFile(file){
   await new Promise(r => setTimeout(r, 60));     // даём часикам провернуться
   try{
     const t0 = performance.now();
-    const res = extract(pic);
+    const res = await extractSmart(pic);
     if (!res.ok){ hideBusy(); toast(res.reason, 4000); return; }
+    console.log(`вырезание: ${Math.round(performance.now()-t0)} мс, ${res.byModel ? 'модель' : 'старый алгоритм'}`);
     renderDebug(res);
     hideBusy();
     showSheet(res);
@@ -2669,6 +2686,134 @@ async function handleFile(file){
     hideBusy();
     toast('Не смог обработать: ' + err.message, 5000);
   }
+}
+
+/* =====================================================================
+   ВЫРЕЗАНИЕ МОДЕЛЬЮ
+   Порог по яркости спрашивает у каждой точки «ты темнее бумаги?». Бледный
+   карандаш темнее едва-едва, планку приходится ронять почти до нуля — и
+   вместе с рисунком проходят тень, складка и фактура листа: вырезается вся
+   страница. Модель (U²-Net small, Apache-2.0, 4.4 МБ) яркость не сравнивает,
+   она узнаёт персонажа целиком, и бледность ей безразлична.
+
+   Считается на устройстве. Порядок обязателен: сперва наш поиск и
+   выпрямление листа, только потом модель — на сыром снимке она принимает
+   за главный объект саму бумагу и вырезает лист.
+
+   Откат без пересборки: ?model=off в адресе или
+   localStorage.setItem('ww.model','off') — вернётся старый алгоритм.
+   ===================================================================== */
+const MODEL_ON = (()=>{
+  const q = new URLSearchParams(location.search).get('model');
+  if (q !== null) return q !== 'off';
+  try { return localStorage.getItem('ww.model') !== 'off'; } catch(e){ return true; }
+})();
+const MODEL_SIZE = 320;
+const MODEL_MEAN = [0.485, 0.456, 0.406], MODEL_STD = [0.229, 0.224, 0.225];
+let ortLoading = null, modelSession = null;
+
+function loadOrt(){
+  if (ortLoading) return ortLoading;
+  ortLoading = new Promise((ok, bad)=>{
+    const el = document.createElement('script');
+    el.src = '/vendor/ort-1.19.2/ort.min.js';
+    el.onload = ()=>{
+      ort.env.wasm.wasmPaths = '/vendor/ort-1.19.2/';
+      ort.env.wasm.numThreads = 1;          // потоки требуют COOP/COEP, они нам дороже
+      ort.env.logLevel = 'error';
+      ok();
+    };
+    el.onerror = ()=>{ ortLoading = null; bad(new Error('рантайм не загрузился')); };
+    document.head.appendChild(el);
+  });
+  return ortLoading;
+}
+async function getModel(){
+  if (modelSession) return modelSession;
+  await loadOrt();
+  modelSession = await ort.InferenceSession.create('/models/u2netp.onnx', {executionProviders:['wasm']});
+  return modelSession;
+}
+
+/* Лист -> мягкая маска персонажа того же размера */
+async function modelAlpha(sheet){
+  const s = await getModel();
+  const N = MODEL_SIZE;
+  const small = document.createElement('canvas'); small.width = small.height = N;
+  const sx = small.getContext('2d');
+  const src = document.createElement('canvas'); src.width = sheet.width; src.height = sheet.height;
+  src.getContext('2d').putImageData(sheet, 0, 0);
+  sx.drawImage(src, 0, 0, N, N);
+  const d = sx.getImageData(0, 0, N, N).data;
+
+  let max = 1;
+  for (let i=0;i<N*N;i++) for (let k=0;k<3;k++) if (d[i*4+k] > max) max = d[i*4+k];
+  const t = new Float32Array(3*N*N);
+  for (let i=0;i<N*N;i++)
+    for (let k=0;k<3;k++)
+      t[k*N*N + i] = ((d[i*4+k] / max) - MODEL_MEAN[k]) / MODEL_STD[k];
+
+  const out = await s.run({[s.inputNames[0]]: new ort.Tensor('float32', t, [1,3,N,N])});
+  const pred = out[s.outputNames[0]].data;
+  let mi = Infinity, ma = -Infinity;
+  for (const v of pred){ if (v < mi) mi = v; if (v > ma) ma = v; }
+  if (!(ma > mi)) throw new Error('пустой ответ модели');
+
+  const m = document.createElement('canvas'); m.width = m.height = N;
+  const mx = m.getContext('2d'), im = mx.createImageData(N, N);
+  for (let i=0;i<N*N;i++){
+    const v = Math.round((pred[i] - mi) / (ma - mi) * 255);
+    im.data[i*4] = im.data[i*4+1] = im.data[i*4+2] = v;
+    im.data[i*4+3] = 255;
+  }
+  mx.putImageData(im, 0, 0);
+
+  const big = document.createElement('canvas');
+  big.width = sheet.width; big.height = sheet.height;
+  const bx = big.getContext('2d');
+  bx.imageSmoothingQuality = 'high';
+  bx.drawImage(m, 0, 0, sheet.width, sheet.height);
+  const px = bx.getImageData(0, 0, sheet.width, sheet.height).data;
+  const alpha = new Uint8ClampedArray(sheet.width * sheet.height);
+  for (let i=0;i<alpha.length;i++) alpha[i] = px[i*4];
+  return alpha;
+}
+
+/* Маска модели -> те же спрайты, что и раньше: плитки, обводка и всё
+   остальное работают с ней без изменений. */
+function spritesFromAlpha(res, alpha){
+  const {w, h, rgb} = res;
+  const mask = new Uint8Array(w*h);
+  let n = 0;
+  for (let i=0;i<w*h;i++) if (alpha[i] > 128){ mask[i] = 1; n++; }
+  const share = n / (w*h);
+  // пусто или почти весь лист — модель промахнулась, доверяем старому пути
+  if (share < 0.004 || share > 0.75) return null;
+  const {objs, lab} = rankObjects(mask, w, h, 0);
+  if (!objs.length) return null;
+  const sprites = objs.slice(0, 8).map(o => makeSprite(rgb, mask, lab, o, w, h));
+  if (!sprites.length) return null;
+  return Object.assign({}, res, {ok: true, mask, sprites, byModel: true});
+}
+
+/* Лист выпрямляем всегда, дальше пробуем модель. Разбор краски — тяжёлый,
+   поэтому запускаем его только если модель не загрузилась, упала или сама
+   себе не поверила. */
+async function extractSmart(img){
+  const base = extractSheet(img);
+  if (MODEL_ON){
+    try{
+      if (!modelSession) $('busySub').textContent = 'Первый раз — подгружаю распознавание';
+      const alpha = await modelAlpha(base.sheet);
+      $('busySub').textContent = 'Немножко подожди';
+      const better = spritesFromAlpha(base, alpha);
+      if (better) return better;
+      console.warn('модель дала неправдоподобную маску — беру старый алгоритм');
+    }catch(e){
+      console.warn('вырезание моделью не вышло:', e.message);
+    }
+  }
+  return extractInk(base);
 }
 
 /* --- отладочные картинки: выпрямленный лист + маска --- */
