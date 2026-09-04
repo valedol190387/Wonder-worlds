@@ -11,8 +11,12 @@
 писатель кадров, который вместо GIF складывает лист PNG с прозрачностью —
 его потом сможет играть мир на телевизоре.
 """
-import os, sys, json, uuid, time, math, traceback, logging
+import os, sys, json, uuid, time, math, traceback, logging, threading
 from pathlib import Path
+
+RENDER_LOCK = threading.Lock()          # рендеры по одному
+RIG_MAX = 360                           # рабочий размер персонажа: кадр листа всё равно 360
+MAX_RENDER_FRAMES = 180                 # хватает на цикл-два движения; в лист идёт 80
 
 import numpy as np
 import yaml
@@ -188,8 +192,20 @@ def rig():
         log.error('rig %s: %s', rid, traceback.format_exc())
         return jsonify(error=f'скелет не нашёлся: {e}', id=rid), 422
     cfg = yaml.safe_load((d / 'char_cfg.yaml').read_text())
-    # позер иногда кладёт сустав на пиксель за рамку, а рендер на этом падает
     W, H = cfg['width'], cfg['height']
+    # Сетка рендера строится по маске: персонаж в 1000 px — это в четыре раза
+    # больше треугольников, чем в 500, а кадр листа всё равно 360. Ужимаем.
+    k = min(1.0, RIG_MAX / max(W, H))
+    if k < 1.0:
+        nw, nh = max(1, round(W * k)), max(1, round(H * k))
+        for name in ('texture.png', 'mask.png'):
+            im = cv2.imread(str(d / name), cv2.IMREAD_UNCHANGED)
+            cv2.imwrite(str(d / name), cv2.resize(im, (nw, nh), interpolation=cv2.INTER_AREA))
+        for s in cfg['skeleton']:
+            s['loc'] = [s['loc'][0] * k, s['loc'][1] * k]
+        cfg['width'], cfg['height'] = W, H = nw, nh
+        log.info('персонаж ужат до %dx%d', nw, nh)
+    # позер иногда кладёт сустав на пиксель за рамку, а рендер на этом падает
     for s in cfg['skeleton']:
         s['loc'] = [int(min(max(s['loc'][0], 0), W - 1)), int(min(max(s['loc'][1], 0), H - 1))]
     (d / 'char_cfg.yaml').write_text(yaml.dump(cfg))
@@ -209,6 +225,19 @@ def animate(rid):
         return jsonify(id=rid, motion=motion, sheet=f'/out/{rid}/{motion}.png',
                        meta=json.loads(out_png.with_suffix('.json').read_text()), cached=True)
     mcfg = MOTIONS[motion]
+    # Записи длинные (у «машет» 839 кадров), а софтверный рендер даёт ~10 к/с:
+    # почти всё время уходило на кадры, которые потом выбрасываются. Режем
+    # запись до цикла-двух — пишем рядом урезанную копию конфига движения.
+    m = yaml.safe_load(mcfg.read_text())
+    start = int(m.get('start_frame_idx') or 0)
+    end = m.get('end_frame_idx')                       # null = до конца записи
+    total = (int(end) - start) if end is not None else 10**9
+    if total > MAX_RENDER_FRAMES:
+        m['end_frame_idx'] = start + MAX_RENDER_FRAMES
+        if not str(m['filepath']).startswith('/'):
+            m['filepath'] = str((AD / m['filepath']).resolve())   # пути в их yaml — от корня репозитория
+        mcfg = d / f'motion_{motion}.yaml'
+        mcfg.write_text(yaml.dump(m))
     mvc = {
         'scene': {'ANIMATED_CHARACTERS': [{
             'character_cfg': str(d / 'char_cfg.yaml'),
@@ -222,11 +251,17 @@ def animate(rid):
     mvc_fn = d / f'mvc_{motion}.yaml'
     mvc_fn.write_text(yaml.dump(mvc))
     t0 = time.time()
-    try:
-        animated_drawings.render.start(str(mvc_fn))
-    except Exception as e:
-        log.error('animate %s/%s: %s', rid, motion, traceback.format_exc())
-        return jsonify(error=f'рендер упал: {e}'), 500
+    # Рендеры строго по одному: шесть параллельных душат друг друга, а
+    # контексты OSMesa в потоках ещё и не дружат. Очередь — и всё идёт.
+    with RENDER_LOCK:
+        if out_png.exists() and out_png.with_suffix('.json').exists():   # пока ждали — сделал сосед
+            return jsonify(id=rid, motion=motion, sheet=f'/out/{rid}/{motion}.png',
+                           meta=json.loads(out_png.with_suffix('.json').read_text()), cached=True)
+        try:
+            animated_drawings.render.start(str(mvc_fn))
+        except Exception as e:
+            log.error('animate %s/%s: %s', rid, motion, traceback.format_exc())
+            return jsonify(error=f'рендер упал: {e}'), 500
     return jsonify(id=rid, motion=motion, sheet=f'/out/{rid}/{motion}.png',
                    meta=json.loads(out_png.with_suffix('.json').read_text()),
                    seconds=round(time.time() - t0, 1))

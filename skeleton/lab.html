@@ -95,9 +95,20 @@ function showRig(j){
   };
 }
 
-async function animate(k, ru, btn){
-  btn.disabled = true; btn.textContent = ru + '…';
-  const t0 = performance.now();
+/* Рендеры идут по одному — нажатые кнопки встают в очередь, а не давят
+   сервер разом. Кнопка показывает, где она: «в очереди» или «рендер…». */
+const queue = []; let rendering = false;
+function animate(k, ru, btn){
+  if (queue.some(q => q.k === k) ) return;
+  btn.disabled = true; btn.textContent = ru + ' · в очереди';
+  queue.push({k, ru, btn});
+  pump();
+}
+async function pump(){
+  if (rendering || !queue.length) return;
+  rendering = true;
+  const {k, ru, btn} = queue.shift();
+  btn.textContent = ru + ' · рендер…';
   try{
     const r = await fetch('/animate/' + rigId, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({motion: k})});
     const j = await r.json();
@@ -106,6 +117,8 @@ async function animate(k, ru, btn){
     play(j, ru);
   }catch(e){ log(k + ': ' + e.message); }
   btn.disabled = false; btn.textContent = ru;
+  rendering = false;
+  pump();
 }
 
 /* лист кадров играется на canvas — ровно так же будет играть мир на телевизоре */
