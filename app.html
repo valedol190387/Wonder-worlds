@@ -70,8 +70,13 @@
   /* ---------- QR в углу телевизора ----------
      Единственное, что нужно на самом экране: подошёл, навёл телефон —
      и телефон стал пультом. */
+  /* Панель кнопок выезжает только на компьютере — и садится ровно туда же,
+     в нижний угол. Пока она видна, QR поднимается над ней; высоту панели
+     меряем на месте, потому что на узком окне кнопки переносятся в две
+     строки. На телевизоре панели нет и QR стоит внизу. */
   #tvqr{position:fixed;left:calc(20px + env(safe-area-inset-left));
     bottom:calc(20px + env(safe-area-inset-bottom));z-index:6;display:none;
+    transition:bottom .3s;
     align-items:center;gap:16px;background:var(--ui-bg);border:1px solid var(--ui-line);
     border-radius:22px;padding:12px 22px 12px 12px;cursor:pointer;
     backdrop-filter:blur(10px);box-shadow:0 10px 40px rgba(0,0,0,.45)}
@@ -83,6 +88,17 @@
   #tvqrCode{font-size:clamp(24px,2.3vw,44px);font-weight:800;letter-spacing:.16em;
     color:var(--accent);margin:2px 0 4px}
   #tvqrText span{display:block;font-size:clamp(11px,.85vw,15px);opacity:.5;max-width:19ch}
+  /* высоту панели меряем целиком, вместе с её нижним отступом безопасной
+     зоны — прибавлять env() ещё раз не нужно (и calc с ним капризничает) */
+  body.desk #tvqr{bottom:calc(var(--barh, 96px) + 26px)}
+  /* в маленьком окне плашка ужимается до кода с картинкой */
+  @media (max-width:820px){
+    #tvqr{gap:11px;padding:9px 14px 9px 9px;border-radius:18px}
+    #tvqrCv{width:74px;padding:5px;border-radius:10px}
+    #tvqrText b{font-size:12px}
+    #tvqrCode{font-size:22px;margin:1px 0 0}
+    #tvqrText span{display:none}
+  }
 
   /* ---------- «подожди, обрабатываю» ----------
      Ребёнку нужно видеть, что машинка думает, и не иметь возможности
@@ -3827,10 +3843,17 @@ function armIdle(){
     document.body.classList.remove('desk');
   }, 8000);
 }
-function wake(){ document.body.classList.add('desk'); armIdle(); }
+/* высота панели меняется от ширины окна: на узком кнопки переносятся —
+   меряем её и отдаём в CSS, чтобы QR встал ровно над ней */
+function measureBar(){
+  document.documentElement.style.setProperty('--barh', $('bar').offsetHeight + 'px');
+}
+function wake(){ document.body.classList.add('desk'); measureBar(); armIdle(); }
 if (!IS_PHONE){
   document.body.classList.add('tv');
   ['mousemove','pointerdown','keydown','touchstart'].forEach(ev => addEventListener(ev, wake, {passive:true}));
+  addEventListener('resize', measureBar);
+  measureBar();
 }
 
 /* PWA: оболочка кешируется, миры всегда из сети */
