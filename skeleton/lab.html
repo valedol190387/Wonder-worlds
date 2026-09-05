@@ -38,6 +38,11 @@
     <p id="status"></p>
     <div id="rigBox" style="display:none"><img id="rigImg" alt=""><svg id="rigSvg"></svg></div>
     <div id="motions"></div>
+    <p style="margin:12px 0 0;font-size:13px;opacity:.7">Размах:
+      <label><input type="radio" name="amp" value="1"> как в записи</label>
+      <label><input type="radio" name="amp" value="1.5" checked> ×1.5</label>
+      <label><input type="radio" name="amp" value="2"> ×2</label>
+    </p>
   </div>
   <div class="card" style="flex:1;min-width:320px">
     <b>Движения</b>
@@ -110,11 +115,12 @@ async function pump(){
   const {k, ru, btn} = queue.shift();
   btn.textContent = ru + ' · рендер…';
   try{
-    const r = await fetch('/animate/' + rigId, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({motion: k})});
+    const amp = +document.querySelector('input[name=amp]:checked').value;
+    const r = await fetch('/animate/' + rigId, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({motion: k, amp})});
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || r.status);
     log(`${k}: ${j.cached ? 'из кеша' : j.seconds + ' с'}, кадров ${j.meta.frames} из ${j.meta.source_frames}, ${j.meta.w}×${j.meta.h}`);
-    play(j, ru);
+    play(j, ru + ' ×' + amp);
   }catch(e){ log(k + ': ' + e.message); }
   btn.disabled = false; btn.textContent = ru;
   rendering = false;
@@ -132,9 +138,11 @@ function play(j, ru){
   img.onload = ()=>{
     const {frames, cols, w, h, fps} = j.meta, x = cv.getContext('2d');
     const k = Math.min(440/w, 440/h);
-    let i = 0, last = 0;
+    // кадр считается от времени старта: ни один rAF не пропускает и не дублирует кадры
+    let t0 = null;
     (function tick(t){
-      if (t - last > 1000/fps){ last = t; i = (i+1) % frames; }
+      if (t0 === null) t0 = t;
+      const i = Math.floor((t - t0) * fps / 1000) % frames;
       x.clearRect(0,0,480,480);
       x.drawImage(img, (i%cols)*w, Math.floor(i/cols)*h, w, h, (480-w*k)/2, (480-h*k)/2, w*k, h*k);
       requestAnimationFrame(tick);

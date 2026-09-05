@@ -16,7 +16,9 @@ from pathlib import Path
 
 RENDER_LOCK = threading.Lock()          # рендеры по одному
 RIG_MAX = 360                           # рабочий размер персонажа: кадр листа всё равно 360
-MAX_RENDER_FRAMES = 180                 # хватает на цикл-два движения; в лист идёт 80
+RENDER_SECONDS = 4.0                    # сколько записи рендерим: цикл-два движения
+AMPLIFY = 1.5                           # размах движений: мультяшный, для схематичных рисунков
+TARGET_FPS = 24                         # частота листа на экране
 
 import numpy as np
 import yaml
@@ -24,6 +26,7 @@ from flask import Flask, request, jsonify, send_from_directory, send_file
 
 TORCHSERVE = os.environ.get('TORCHSERVE', 'http://localhost:8080').rstrip('/')
 OUT = Path(os.environ.get('OUT_DIR', './out')); OUT.mkdir(parents=True, exist_ok=True)
+(OUT / 'bvh').mkdir(exist_ok=True)
 AD = Path('/app/AnimatedDrawings') if Path('/app/AnimatedDrawings').exists() else Path(__file__).resolve().parents[1] / 'AnimatedDrawings'
 sys.path.insert(0, str(AD / 'examples'))
 
@@ -78,7 +81,7 @@ class SheetWriter(vrc.VideoWriter):
     """Складывает кадры в сетку. Рядом пишет json: размер кадра, сколько их,
     сколько в ряду, частота. Мир на телевизоре умеет играть такое с canvas."""
     COLS = 10
-    MAX_FRAMES = 80
+    MAX_FRAMES = 150
 
     def __init__(self, controller):
         super().__init__()
@@ -94,7 +97,9 @@ class SheetWriter(vrc.VideoWriter):
         n = len(self.frames)
         if not n:
             return
-        step = max(1, math.ceil(n / self.MAX_FRAMES))
+        # шаг — чтобы на экране было ~24 к/с; потолок кадров только страховка
+        step = max(1, round(self.fps / TARGET_FPS))
+        while math.ceil(n / step) > self.MAX_FRAMES: step += 1
         frames = self.frames[::step]
         fps = self.fps / step
         h, w = frames[0].shape[:2]
@@ -173,6 +178,35 @@ RETARGET_DIR = AD / 'examples/config/retarget'
 MOTIONS = {p.stem: p for p in sorted(MOTION_DIR.glob('*.yaml'))}
 RU = {'dab': 'дэб', 'jesse_dance': 'танец', 'jumping': 'прыжок', 'jumping_jacks': 'зарядка',
       'wave_hello': 'машет', 'zombie': 'зомби-шаг'}
+
+def bvh_frame_time(path: Path) -> float:
+    for line in path.read_text().splitlines():
+        if line.strip().startswith('Frame Time:'):
+            return float(line.split(':')[1])
+    return 1 / 60
+
+def amplified_bvh(src: Path, amp: float, dst: Path) -> Path:
+    """Копия записи с усиленными поворотами суставов: угол = покой +
+    (угол − покой)·amp, где покой — первый кадр. Позиции корня не трогаем.
+    Углы по времени разворачиваем, чтобы скачок через ±180° не улетал."""
+    if dst.exists():
+        return dst
+    text = src.read_text().splitlines()
+    i_motion = next(i for i, l in enumerate(text) if l.strip() == 'MOTION')
+    chans = []
+    for l in text[:i_motion]:
+        t = l.strip().split()
+        if t and t[0] == 'CHANNELS':
+            chans += t[2:2 + int(t[1])]
+    i_data = i_motion + 3                                   # Frames:, Frame Time:
+    data = np.array([[float(v) for v in l.split()] for l in text[i_data:] if l.strip()])
+    rot = np.array([c.lower().endswith('rotation') for c in chans])
+    ang = np.unwrap(np.deg2rad(data[:, rot]), axis=0)
+    rest = ang[0]
+    data[:, rot] = np.rad2deg(rest + (ang - rest) * amp)
+    out = text[:i_data] + [' '.join(f'{v:.6f}' for v in row) for row in data]
+    dst.write_text('\n'.join(out) + '\n')
+    return dst
 
 def retarget_for(motion_cfg: Path) -> Path:
     fp = yaml.safe_load(motion_cfg.read_text()).get('filepath', '')
@@ -280,29 +314,36 @@ def animate(rid):
     motion = (request.json or {}).get('motion', 'dab')
     if motion not in MOTIONS:
         return jsonify(error='нет такого движения'), 400
-    out_png = d / f'{motion}.png'
+    amp_q = float((request.json or {}).get('amp', AMPLIFY))
+    tag = f'{motion}_x{amp_q:g}'          # размах всегда в имени: листы с разным размахом не путаются
+    out_png = d / f'{tag}.png'
     if out_png.exists() and out_png.with_suffix('.json').exists():
-        return jsonify(id=rid, motion=motion, sheet=f'/out/{rid}/{motion}.png',
+        return jsonify(id=rid, motion=motion, sheet=f'/out/{rid}/{tag}.png',
                        meta=json.loads(out_png.with_suffix('.json').read_text()), cached=True)
     mcfg = MOTIONS[motion]
     # Записи длинные (у «машет» 839 кадров), а софтверный рендер даёт ~10 к/с:
     # почти всё время уходило на кадры, которые потом выбрасываются. Режем
     # запись до цикла-двух — пишем рядом урезанную копию конфига движения.
+    amp = float((request.json or {}).get('amp', AMPLIFY))
     m = yaml.safe_load(mcfg.read_text())
+    bvh = Path(m['filepath']) if str(m['filepath']).startswith('/') else (AD / m['filepath']).resolve()
+    ft = bvh_frame_time(bvh)
     start = int(m.get('start_frame_idx') or 0)
     end = m.get('end_frame_idx')                       # null = до конца записи
     total = (int(end) - start) if end is not None else 10**9
-    if total > MAX_RENDER_FRAMES:
-        m['end_frame_idx'] = start + MAX_RENDER_FRAMES
-        if not str(m['filepath']).startswith('/'):
-            m['filepath'] = str((AD / m['filepath']).resolve())   # пути в их yaml — от корня репозитория
-        mcfg = d / f'motion_{motion}.yaml'
-        mcfg.write_text(yaml.dump(m))
+    want = int(RENDER_SECONDS / ft)                    # записи разной частоты: режем по времени
+    m['end_frame_idx'] = start + min(total, want)
+    if amp != 1.0:
+        bvh = amplified_bvh(bvh, amp, OUT / 'bvh' / f'{bvh.stem}_x{amp:g}.bvh')
+    m['filepath'] = str(bvh)
+    mcfg = d / f'motion_{motion}.yaml'
+    mcfg.write_text(yaml.dump(m))
+    log.info('%s: %.0f к/с в записи, берём %d кадров (%.1f с), размах ×%g', motion, 1/ft, m['end_frame_idx']-start, (m['end_frame_idx']-start)*ft, amp)
     mvc = {
         'scene': {'ANIMATED_CHARACTERS': [{
             'character_cfg': str(d / 'char_cfg.yaml'),
             'motion_cfg': str(mcfg),
-            'retarget_cfg': str(retarget_for(mcfg)),
+            'retarget_cfg': str(retarget_for(MOTIONS[motion])),   # по исходной записи: усиленная копия лежит в другой папке
         }]},
         'view': {'USE_MESA': True, 'WINDOW_DIMENSIONS': [360, 360],
                  'CLEAR_COLOR': [1.0, 1.0, 1.0, 0.0]},
@@ -322,7 +363,7 @@ def animate(rid):
         except Exception as e:
             log.error('animate %s/%s: %s', rid, motion, traceback.format_exc())
             return jsonify(error=f'рендер упал: {e}'), 500
-    return jsonify(id=rid, motion=motion, sheet=f'/out/{rid}/{motion}.png',
+    return jsonify(id=rid, motion=motion, sheet=f'/out/{rid}/{tag}.png',
                    meta=json.loads(out_png.with_suffix('.json').read_text()),
                    seconds=round(time.time() - t0, 1))
 
