@@ -37,6 +37,9 @@ docker compose up --build
 `dab`, `jesse_dance`, `jumping`, `jumping_jacks`, `wave_hello`, `zombie` —
 из `examples/config/motion/`. Ретаргет подбирается по папке bvh.
 
+На полигон можно кидать что угодно — стикеры, скриншоты, фото: фон
+вырезается той же U²-Net, что и на телефоне (`models/u2netp.onnx`).
+
 ## Что уже выяснили
 
 - **Персонаж с руками-ногами-палочками** (как дети и рисуют монстров) —

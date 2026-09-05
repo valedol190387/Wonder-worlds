@@ -11,7 +11,6 @@ RUN git clone --depth 1 https://github.com/facebookresearch/AnimatedDrawings.git
     && pip install --no-cache-dir -e AnimatedDrawings \
     && pip install --no-cache-dir flask==2.3.2 onnxruntime==1.16.3
 
-# контекст сборки — корень репозитория (см. docker-compose.yml)
 COPY skeleton/app.py /app/app.py
 COPY skeleton/lab.html /app/lab.html
 # та же модель вырезания, что на телефоне (U²-Net small, Apache-2.0)
