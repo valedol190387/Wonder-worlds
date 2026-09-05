@@ -57,18 +57,12 @@ def _post_redirected(url, *a, **k):
                 arr = cv2.imdecode(np.frombuffer(img_b, np.uint8), cv2.IMREAD_COLOR)
                 if arr is not None:
                     H, W = arr.shape[:2]
-            if isinstance(dets, list) and dets:
-                def area(d):
-                    l, t, r, b = d['bbox']; return max(0, r - l) * max(0, b - t)
-                dets.sort(key=area, reverse=True)
-                big = dets[0]
-                if H and W and area(big) < 0.6 * H * W:
-                    log.info('детекция %.0f%% картинки — беру картинку целиком', 100 * area(big) / (H * W))
-                    big = {'bbox': [0, 0, W, H], 'score': 1.0}
-                else:
-                    log.info('беру самую крупную детекцию из %d', len(dets))
-                big['score'] = 1.0
-                return _Resp(json.dumps([big]).encode(), 200)
+            if isinstance(dets, list) and dets and H and W:
+                # Рамка — вся картинка, всегда: мы уже обрезали её по альфе с
+                # полем. Рамка впритык к фигуре рвёт внешний контур силуэта о
+                # края кадра, и построитель сетки берёт кусок вместо целого.
+                log.info('детекций %d — рамка вся картинка (%dx%d)', len(dets), W, H)
+                return _Resp(json.dumps([{'bbox': [0, 0, W, H], 'score': 1.0}]).encode(), 200)
         except Exception:
             log.warning('не смог перечитать детекции: %s', traceback.format_exc())
     return resp
@@ -129,6 +123,50 @@ def _create(controller):
     return _orig_create(controller)
 vrc.VideoWriter.create_video_writer = staticmethod(_create)
 
+# --- вырезание фона: та же U²-Net, что на телефоне ---------------------------------
+#  На полигон кидают что угодно: стикеры, скриншоты, фото. Детектору Meta
+#  нужен персонаж на белом, а нам для маски — честная альфа. Если у картинки
+#  прозрачности нет, режем сами той же моделью, что и приложение.
+import onnxruntime as ort
+U2 = ort.InferenceSession(str(Path(__file__).with_name('u2netp.onnx')), providers=['CPUExecutionProvider'])
+U2_IN = U2.get_inputs()[0].name
+U2_MEAN = np.array([0.485, 0.456, 0.406], np.float32); U2_STD = np.array([0.229, 0.224, 0.225], np.float32)
+
+def cutout_alpha(bgr):
+    """BGR -> альфа 0..255 того же размера"""
+    h, w = bgr.shape[:2]
+    small = cv2.resize(bgr, (320, 320), interpolation=cv2.INTER_AREA)
+    rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB).astype(np.float32)
+    rgb = rgb / max(1.0, float(rgb.max()))
+    x = ((rgb - U2_MEAN) / U2_STD).transpose(2, 0, 1)[None].astype(np.float32)
+    pred = U2.run(None, {U2_IN: x})[0][0, 0]
+    pred = (pred - pred.min()) / max(1e-6, float(pred.max() - pred.min()))
+    return cv2.resize((pred * 255).astype(np.uint8), (w, h), interpolation=cv2.INTER_LINEAR)
+
+def solid_mask(alpha, thr=96):
+    """Сплошной силуэт: самая крупная область, все дыры внутри залиты.
+    Их построитель сетки берёт САМЫЙ ДЛИННЫЙ контур как внешний — если в
+    маске есть дыра (глаз, экран, просвет между ногами), длиннее может
+    оказаться она, и сетка превращается в лоскут."""
+    m = (alpha > thr).astype(np.uint8)
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+    if n > 1:
+        big = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        m = (lab == big).astype(np.uint8)
+    # заливка дыр: всё, что не достижимо от края по фону, — внутри персонажа
+    h, w = m.shape
+    ff = np.zeros((h + 2, w + 2), np.uint8)
+    bg = (1 - m).copy()
+    cv2.floodFill(bg, ff, (0, 0), 2)
+    for x in (0, w - 1):
+        for y in range(0, h, max(1, h // 8)):
+            if bg[y, x] == 1: cv2.floodFill(bg, ff, (x, y), 2)
+    for y in (0, h - 1):
+        for x in range(0, w, max(1, w // 8)):
+            if bg[y, x] == 1: cv2.floodFill(bg, ff, (x, y), 2)
+    filled = (bg != 2).astype(np.uint8)     # фон = то, куда дотекла заливка
+    return filled * 255
+
 # --- движения ------------------------------------------------------------------
 MOTION_DIR = AD / 'examples/config/motion'
 RETARGET_DIR = AD / 'examples/config/retarget'
@@ -172,22 +210,43 @@ def rig():
         img = cv2.imread(str(src), cv2.IMREAD_UNCHANGED)
         if img is None:
             return jsonify(error='не прочиталась'), 400
-        if img.ndim == 3 and img.shape[2] == 4:
-            a = img[:, :, 3:4] / 255.0
-            rgb = img[:, :, :3] * a + 255 * (1 - a)
-            cv2.imwrite(str(src), rgb.astype(np.uint8))
+        if img.ndim == 2:
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        has_alpha = img.ndim == 3 and img.shape[2] == 4 and 0.02 < float((img[:, :, 3] < 96).mean()) < 0.98
+        if not has_alpha:
+            # прозрачности нет (или она пустая) — вырезаем сами, как телефон
+            bgr = img[:, :, :3] if img.shape[2] == 4 else img
+            alpha = cutout_alpha(bgr)
+            img = np.dstack([bgr, alpha])
+            log.info('вырезал фон моделью: непрозрачного %.0f%%', 100 * float((alpha >= 96).mean()))
+        # обрезаем по персонажу с полем — детектору проще, рамке нечего терять
+        ys, xs = np.where(img[:, :, 3] >= 96)
+        if len(xs) < 200:
+            return jsonify(error='на картинке не нашлось персонажа', id=rid), 422
+        pad = int(0.06 * max(img.shape[:2]))
+        y0, y1 = max(0, ys.min() - pad), min(img.shape[0], ys.max() + pad + 1)
+        x0, x1 = max(0, xs.min() - pad), min(img.shape[1], xs.max() + pad + 1)
+        img = img[y0:y1, x0:x1]
+        cv2.imwrite(str(d / 'cutout.png'), img)
+        a = img[:, :, 3:4] / 255.0
+        cv2.imwrite(str(src), (img[:, :, :3] * a + 255 * (1 - a)).astype(np.uint8))   # для детектора — на белом
         image_to_annotations(str(src), str(d))
         # Их сегментация режет по яркости и теряет светлое внутри: у девочки
         # провалилось лицо. У нас есть честная альфа выреза — она и есть маска.
-        if img.ndim == 3 and img.shape[2] == 4:
+        if True:
             cfg = yaml.safe_load((d / 'char_cfg.yaml').read_text())
             bb = yaml.safe_load((d / 'bounding_box.yaml').read_text())
             scale = min(1.0, 1000 / max(img.shape[:2]))
             a = cv2.resize(img[:, :, 3], (round(img.shape[1]*scale), round(img.shape[0]*scale)))
             a = a[bb['top']:bb['bottom'], bb['left']:bb['right']]
-            if a.shape[0] == cfg['height'] and a.shape[1] == cfg['width']:
-                cv2.imwrite(str(d / 'mask.png'), (a > 96).astype(np.uint8) * 255)
-                log.info('маска взята из альфы выреза')
+            hole = float((a < 96).mean())          # доля прозрачного
+            # альфа есть, но фон в ней непрозрачный (белый) — это не вырез,
+            # такая «маска» была бы сплошным прямоугольником; оставляем их сегментацию
+            if a.shape[0] == cfg['height'] and a.shape[1] == cfg['width'] and 0.02 < hole < 0.98:
+                cv2.imwrite(str(d / 'mask.png'), solid_mask(a))
+                log.info('маска взята из альфы выреза (прозрачного %.0f%%), дыры залиты', hole * 100)
+            else:
+                log.info('альфа без прозрачности (%.0f%%) — маска остаётся от сегментации', hole * 100)
     except Exception as e:
         log.error('rig %s: %s', rid, traceback.format_exc())
         return jsonify(error=f'скелет не нашёлся: {e}', id=rid), 422
@@ -200,7 +259,8 @@ def rig():
         nw, nh = max(1, round(W * k)), max(1, round(H * k))
         for name in ('texture.png', 'mask.png'):
             im = cv2.imread(str(d / name), cv2.IMREAD_UNCHANGED)
-            cv2.imwrite(str(d / name), cv2.resize(im, (nw, nh), interpolation=cv2.INTER_AREA))
+            interp = cv2.INTER_NEAREST if name == 'mask.png' else cv2.INTER_AREA   # маска остаётся 0/255
+            cv2.imwrite(str(d / name), cv2.resize(im, (nw, nh), interpolation=interp))
         for s in cfg['skeleton']:
             s['loc'] = [s['loc'][0] * k, s['loc'][1] * k]
         cfg['width'], cfg['height'] = W, H = nw, nh

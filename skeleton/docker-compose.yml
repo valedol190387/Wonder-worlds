@@ -19,7 +19,9 @@ services:
 
   skeleton:
     image: ad-skeleton
-    build: .
+    build:
+      context: ..                 # корень репозитория: нужна models/u2netp.onnx
+      dockerfile: skeleton/Dockerfile
     restart: unless-stopped
     ports:
       - "8200:8200"
